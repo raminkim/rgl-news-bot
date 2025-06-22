@@ -5,7 +5,7 @@ import asyncio
 from discord.ext import commands
 from dotenv import load_dotenv
 
-from cogs.hello import HelloCommand
+from server.keep_alive import keep_alive
 
 # env 로드
 load_dotenv()
@@ -24,6 +24,7 @@ async def on_ready():
     print('='*50)
 
 # 오류 처리
+@bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
         await ctx.send(f"❌ '{ctx.message.content}' 명령어를 찾을 수 없습니다. `!help`를 입력해보세요.")
@@ -70,4 +71,7 @@ async def main():
         print(f"❌ 봇 시작 실패: {e}")
 
 if __name__ == '__main__':
+    # 서버 핑용 웹페이지(keep-alive) 기동
+    keep_alive()
+
     asyncio.run(main())
