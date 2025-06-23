@@ -4,6 +4,7 @@ import asyncio
 
 from pathlib import Path
 from typing import List, Dict
+from datetime import date
 
 STATE_FILE = Path("news_state.json")
 
@@ -51,7 +52,9 @@ async def fetch_news_articles() -> List[Dict]:
     Returns:
         articles (List[Dict]): 마지막 처리 시각 이후에 생성된 기사 목록
     """
-    url = 'https://esports-api.game.naver.com/service/v1/news/list?sort=latest&newsType=lol&day=2025-06-22&page=1&pageSize=20'
+
+    formatted_date = date.today().strftime('%Y-%m-%d')
+    url = f'https://esports-api.game.naver.com/service/v1/news/list?sort=latest&newsType=lol&day={formatted_date}&page=1&pageSize=20'
 
     params = {
         'access-control-allow-credentials': 'true',
@@ -80,6 +83,11 @@ async def fetch_news_articles() -> List[Dict]:
         (a for a in content if a.get('createdAt', 0) > last_at),
         key=lambda x: x['createdAt']
     )
+
+    # 신규 기사가 있을 때만 상태 갱신
+    if new_articles:
+        update_state(new_articles)
+
     return new_articles
 
 
