@@ -74,22 +74,39 @@ class NewsCommand(commands.Cog):
         20분마다 자동으로 새로운 기사를 확인하고,
         설정된 채널로 Embed 메시지를 전송합니다.
         """
+        # 1️⃣ 루프 시작 시각과 채널 정보
+        now = datetime.now(pytz.timezone("Asia/Seoul")).strftime("%Y-%m-%d %H:%M:%S")
+        print(f"🕒 [{now}] 뉴스 루프 실행 중… (채널 ID={self.news_channel_id})")
+
         if not self.news_channel_id:
+            print("⚠️ 뉴스 채널이 설정되지 않아 루프를 종료합니다.")
             return
 
         channel = self.bot.get_channel(self.news_channel_id)
         if channel is None:
+            print("⚠️ 설정된 채널을 찾을 수 없어 루프를 종료합니다.")
             return
 
+        # 2️⃣ API 호출 직전
+        print("🔍 새로운 뉴스 조회 중…")
         new_articles = await fetch_news_articles()
+
+        # 3️⃣ 결과 분기
         if not new_articles:
+            print(f"📰 [{now}] 검색된 새로운 뉴스가 없습니다.")
             return
-        
+
+        print(f"📨 [{now}] {len(new_articles)}개의 뉴스 전송 시작…")
         for art in new_articles:
             embed = self.create_news_embed(art)
             await channel.send(embed=embed)
 
+        # 4️⃣ 상태 업데이트
         update_state(new_articles)
+
+        # 5️⃣ 전송 완료
+        now_done = datetime.now(pytz.timezone("Asia/Seoul")).strftime("%Y-%m-%d %H:%M:%S")
+        print(f"✅ [{now_done}] 뉴스 전송 완료 ({len(new_articles)}개)")
 
     
     @commands.command(name='뉴스확인', help='즉시 새로운 뉴스를 확인합니다.')
