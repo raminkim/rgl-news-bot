@@ -136,6 +136,8 @@ class NewsCommand(commands.Cog):
         )
 
         await ctx.send(embed=embed)
+
+        self.news_channel_id = channel.id
         print(f"📡 뉴스 알림 채널 설정: {channel.name} (ID: {channel.id})")
 
         # ➡️ 여기서 즉시 한번 실행
