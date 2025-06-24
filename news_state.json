@@ -1,3 +1,11 @@
 {
-  "lastProcessedAt": 0
+  "lol": {
+    "lastProcessedAt": 0
+  },
+  "valorant": {
+    "lastProcessedAt": 0
+  },
+  "overwatch": {
+    "lastProcessedAt": 0
+  }
 }
