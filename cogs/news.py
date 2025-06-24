@@ -4,7 +4,7 @@ import pytz
 from discord.ext import commands, tasks
 from datetime import datetime
 
-from crawlers.news_crawling import fetch_news_articles, update_state
+from crawlers.news_crawling import fetch_news_articles
 
 class NewsCommand(commands.Cog):
     def __init__(self, bot):
@@ -101,10 +101,7 @@ class NewsCommand(commands.Cog):
             embed = self.create_news_embed(art)
             await channel.send(embed=embed)
 
-        # 4️⃣ 상태 업데이트
-        update_state(new_articles)
-
-        # 5️⃣ 전송 완료
+        # 4️⃣ 전송 완료
         now_done = datetime.now(pytz.timezone("Asia/Seoul")).strftime("%Y-%m-%d %H:%M:%S")
         print(f"✅ [{now_done}] 뉴스 전송 완료 ({len(new_articles)}개)")
 
@@ -131,8 +128,6 @@ class NewsCommand(commands.Cog):
                 except Exception as e:
                     await ctx.send(f"❌ 뉴스 전송 중 오류: {e}")
                     continue
-            
-            update_state(new_articles)
         
         except Exception as e:
             await ctx.send(f"❌ 뉴스 확인 중 오류가 발생했습니다: {e}")
@@ -162,7 +157,6 @@ class NewsCommand(commands.Cog):
         if new_articles:
             for art in new_articles:
                 await ctx.send(embed=self.create_news_embed(art))
-            update_state(new_articles)
 
 
     @commands.command(name='뉴스도움', help='뉴스 봇 명령어 도움말을 표시합니다.')
