@@ -4,7 +4,7 @@ import pytz
 from discord.ext import commands, tasks
 from datetime import datetime
 
-from crawlers.crawling import fetch_news_articles, update_state
+from crawlers.news_crawling import fetch_news_articles, update_state
 
 class NewsCommand(commands.Cog):
     def __init__(self, bot):
