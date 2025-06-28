@@ -12,6 +12,16 @@ class NewsCommand(commands.Cog):
         self.bot = bot
         self.channel_games = {}  # 채널과 게임 이름 매칭
 
+    async def cog_load(self):
+        if not self.news_loop.is_running():  # 중복 실행 방지
+            self.news_loop.start()           # Task 시작
+            print("✅ 뉴스 자동 전송 루프 시작됨")
+
+    async def cog_unload(self):
+        if self.news_loop.is_running():      # 실행 중인지 확인
+            self.news_loop.cancel()          # Task 취소
+            print("❌ 뉴스 자동 전송 루프 중지됨")
+
     def create_news_embed(self, article: Dict[str, Any]):
         """
         뉴스 기사를 위한 디스코드 Embed 객체를 생성합니다.
