@@ -155,7 +155,7 @@ class NewsCommand(commands.Cog):
             await ctx.send(f"❌ 뉴스 확인 중 오류가 발생했습니다: {e}")
             print(f"뉴스확인 명령어 오류: {e}")
 
-    @commands.command(name='뉴스채널설정', help='이 채널에서 받을 게임 뉴스를 설정합니다. 사용법: /뉴스채널설정 롤 발로란트 오버워치')
+    @commands.command(name='뉴스채널설정', help='채널별 게임 뉴스 설정. 매개변수 없이 입력하면 현재 설정 확인, 게임명 입력하면 설정 변경 (예: 롤 발로란트 오버워치)')
     @commands.has_guild_permissions(manage_channels=True)
     async def set_news_channel(self, ctx: commands.Context, *games: str):
         """

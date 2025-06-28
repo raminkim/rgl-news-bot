@@ -58,6 +58,11 @@ class GeneralHelp(commands.Cog):
                     help_text = command.help or '설명이 등록되지 않았습니다.'
                     command_list.append(f"**/{command.name}{signature}**\n{help_text}")
 
+                # 뉴스 기능에는 사용 팁 추가
+                if cog_name == "NewsCommand":
+                    command_list.append("💡 **사용 팁:** 뉴스는 20분마다 자동으로 새 기사가 전송됩니다")
+                    command_list.append("🔒 **권한 안내:** 뉴스채널설정은 채널 관리 권한이 필요합니다")
+
                 embed.add_field(
                     name=category_name, 
                     value="\n\n".join(command_list), 
