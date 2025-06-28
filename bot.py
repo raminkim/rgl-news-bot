@@ -27,11 +27,11 @@ async def on_ready():
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
-        await ctx.send(f"❌ '{ctx.message.content}' 명령어를 찾을 수 없습니다. `!help`를 입력해보세요.")
+        await ctx.send(f"❌ '{ctx.message.content}' 명령어를 찾을 수 없습니다. `/도움`을 입력해보세요.")
     elif isinstance(error, commands.MissingPermissions):
         await ctx.send("❌ 이 명령어를 사용할 권한이 없습니다.")
     elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(f"❌ 필수 인수가 누락되었습니다. `!help {ctx.command}`를 확인해보세요.")
+        await ctx.send(f"❌ 필수 인수가 누락되었습니다. `/도움 {ctx.command}`을(를) 확인해보세요.")
     else:
         print(f"오류 발생: {error}")
         await ctx.send(f"❌ 명령어 실행 중 오류가 발생했습니다: {error}")
@@ -40,7 +40,8 @@ async def load_cogs():
     """모든 cog를 로드합니다."""
     cogs_to_load = [
         'cogs.hello',
-        'cogs.news'
+        'cogs.news',
+        'cogs.help'
     ]    
     
     for cog in cogs_to_load:

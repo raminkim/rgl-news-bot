@@ -106,7 +106,7 @@ class NewsCommand(commands.Cog):
         print(f"✅ [{now_done}] 뉴스 전송 완료 ({len(new_articles)}개)")
 
     
-    @commands.command(name='뉴스확인', help='즉시 새로운 뉴스를 확인합니다.')
+    @commands.command(name='뉴스확인', help='지금 바로 최신 e스포츠 뉴스를 가져옵니다.')
     async def check_news_now(self, ctx):
         """수동으로 뉴스를 확인합니다."""
         await ctx.send("🔍 뉴스를 확인하고 있습니다...")
@@ -133,7 +133,7 @@ class NewsCommand(commands.Cog):
             await ctx.send(f"❌ 뉴스 확인 중 오류가 발생했습니다: {e}")
 
 
-    @commands.command(name='뉴스채널', help='뉴스 알림을 받을 채널을 설정합니다.')
+    @commands.command(name='뉴스채널', help='뉴스 알림이 전송될 디스코드 채널을 지정합니다. (관리자 전용)')
     @commands.has_guild_permissions(manage_channels=True)
     async def set_news_channel(self, ctx, channel: discord.TextChannel = None):
         """뉴스 알림 채널을 설정합니다."""
@@ -157,29 +157,6 @@ class NewsCommand(commands.Cog):
         if new_articles:
             for art in new_articles:
                 await ctx.send(embed=self.create_news_embed(art))
-
-
-    @commands.command(name='뉴스도움', help='뉴스 봇 명령어 도움말을 표시합니다.')
-    async def news_help(self, ctx):
-        embed = discord.Embed(
-            title='📖 뉴스봇 명령어',
-            color=0x00ff56,
-            description="사용 가능한 뉴스 관련 명령어들입니다."
-        )
-
-        embed.add_field(
-            name='/뉴스확인',
-            value='즉시 오늘 날짜의 새로운 뉴스를 확인합니다.',
-            inline=False
-        )
-
-        embed.add_field(
-            name='/뉴스채널 [#채널]',
-            value='뉴스 알림을 받을 채널을 설정합니다. (관리자 권한 필요)',
-            inline=False
-        )
-
-        await ctx.send(embed=embed)
 
 
 async def setup(bot):
