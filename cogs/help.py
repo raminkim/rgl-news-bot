@@ -17,25 +17,52 @@ class GeneralHelp(commands.Cog):
             color=0x1E90FF
         )
 
-        # 명령어를 알파벳순으로 정렬해 가독성 향상
-        for command in sorted(self.bot.commands, key=lambda c: c.name):
-            # 표시 제외 조건: 숨김 처리된 명령어나 내부용
-            if command.hidden:
-                continue
+        # Cog 이름을 한국어로 매핑
+        cog_name_mapping = {
+            "NewsCommand": "📰 뉴스 기능",
+            "HelloCommand": "🎮 일반 기능",
+            "GeneralHelp": "❓ 도움말"
+        }
 
-            # 내부적으로 제거했지만 혹시 남아있을 수 있는 기본 help 제외
-            if command.name == 'help':
-                continue
+        # Cog별로 명령어 그룹화
+        for cog_name, cog in self.bot.cogs.items():
+            # 해당 Cog의 명령어 목록 가져오기
+            cog_commands = []
+            
+            for command in cog.get_commands():
+                # 표시 제외 조건: 숨김 처리된 명령어나 내부용
+                if command.hidden:
+                    continue
 
-            # /도움 자신은 목록에 포함하지 않음
-            if command.name == '도움':
-                continue
+                # 내부적으로 제거했지만 혹시 남아있을 수 있는 기본 help 제외
+                if command.name == 'help':
+                    continue
 
-            # 명령어 시그니처(필수·옵션 인자) 포함해 가독성 향상
-            signature = f" {command.signature}" if command.signature else ""
+                # /도움 자신은 목록에 포함하지 않음 (별도 처리)
+                if command.name == '도움':
+                    continue
 
-            help_text = command.help or '설명이 등록되지 않았습니다.'
-            embed.add_field(name=f'/{command.name}{signature}', value=help_text, inline=False)
+                cog_commands.append(command)
+
+            # 해당 Cog에 표시할 명령어가 있을 때만 카테고리 추가
+            if cog_commands:
+                category_name = cog_name_mapping.get(cog_name, f"📂 {cog_name}")
+                
+                # 명령어를 알파벳순으로 정렬
+                cog_commands.sort(key=lambda c: c.name)
+                
+                # 카테고리별 명령어 목록 생성
+                command_list = []
+                for command in cog_commands:
+                    signature = f" {command.signature}" if command.signature else ""
+                    help_text = command.help or '설명이 등록되지 않았습니다.'
+                    command_list.append(f"**/{command.name}{signature}**\n{help_text}")
+
+                embed.add_field(
+                    name=category_name, 
+                    value="\n\n".join(command_list), 
+                    inline=False
+                )
 
         await ctx.send(embed=embed)
 
