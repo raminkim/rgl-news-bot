@@ -4,7 +4,7 @@ import asyncio
 import heapq
 
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Any
 from datetime import date
 
 STATE_FILE = Path("news_state.json")
@@ -35,7 +35,7 @@ def load_state() -> dict:
     return orjson.loads(STATE_FILE.read_bytes())
 
 
-def update_state(game: str, articles: List[Dict]):
+def update_state(game: str, articles: List[Dict[str, Any]]):
     """
     'news_state.json'에 lastProcessedAt을 최신화한다.
 
@@ -47,7 +47,7 @@ def update_state(game: str, articles: List[Dict]):
     save_state(game, max_at)
 
 
-async def lol_news_articles(formatted_date: str) -> List[Dict]:
+async def lol_news_articles(formatted_date: str) -> List[Dict[str, Any]]:
     """
     주어진 날짜의 네이버 e스포츠(롤) 뉴스 목록을 비동기로 가져옵니다.
 
@@ -95,7 +95,7 @@ async def lol_news_articles(formatted_date: str) -> List[Dict]:
         return []
     
 
-async def valorant_news_articles(formatted_date) -> List[Dict]:
+async def valorant_news_articles(formatted_date: str) -> List[Dict[str, Any]]:
     """
     주어진 날짜의 네이버 e스포츠(발로란트) 뉴스 목록을 비동기로 가져옵니다.
 
@@ -143,7 +143,7 @@ async def valorant_news_articles(formatted_date) -> List[Dict]:
         return []
 
 
-async def overwatch_news_articles(formatted_date) -> List[Dict]:
+async def overwatch_news_articles(formatted_date: str) -> List[Dict[str, Any]]:
     """
     주어진 날짜의 네이버 e스포츠(오버워치) 뉴스 목록을 비동기로 가져옵니다.
 
@@ -191,7 +191,7 @@ async def overwatch_news_articles(formatted_date) -> List[Dict]:
         return []
 
 
-async def fetch_news_articles() -> List[Dict]:
+async def fetch_news_articles() -> List[Dict[str, Any]]:
     """
     네이버 e스포츠 뉴스 사이트에서 최신 기사를 가져와,
     마지막 처리 시각(lastProcessedAt) 이후에 생성된 기사만 필터링하여 반환합니다.
