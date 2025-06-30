@@ -80,12 +80,13 @@ class ScheduleCommand(commands.Cog):
                 img1 = await fetch_img(team1["img"])
                 img2 = await fetch_img(team2["img"])
 
-            # resize logos
-            size = (60, 60)
+            # resize logos (slightly larger for better balance with bigger font)
+            size = (70, 70)
             img1.thumbnail(size, Image.LANCZOS)
             img2.thumbnail(size, Image.LANCZOS)
 
-            W, H = 400, 70
+            # canvas size widened and heightened to accommodate bigger font
+            W, H = 460, 90
             canvas = Image.new("RGBA", (W, H), (255, 255, 255, 0))
             draw = ImageDraw.Draw(canvas)
 
@@ -94,10 +95,11 @@ class ScheduleCommand(commands.Cog):
             canvas.paste(img1, (10, y), img1)
             canvas.paste(img2, (W - img2.width - 10, y), img2)
 
-            # font
+            # font (increase size for better readability)
             try:
-                font = ImageFont.truetype("arial.ttf", 28)
+                font = ImageFont.truetype("arial.ttf", 40)
             except Exception:
+                # Fallback default font (will still look small, but better than failure)
                 font = ImageFont.load_default()
 
             score_text = f"{score1 if score1 is not None else '-'} : {score2 if score2 is not None else '-'}"
