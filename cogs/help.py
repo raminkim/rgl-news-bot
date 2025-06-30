@@ -21,7 +21,8 @@ class GeneralHelp(commands.Cog):
         cog_name_mapping = {
             "NewsCommand": "📰 뉴스 기능",
             "HelloCommand": "🎮 일반 기능",
-            "GeneralHelp": "❓ 도움말"
+            "GeneralHelp": "❓ 도움말",
+            "ScheduleCommand": "🗓️ 롤 리그 일정 조회 기능"
         }
 
         # Cog별로 명령어 그룹화
@@ -61,7 +62,13 @@ class GeneralHelp(commands.Cog):
                 # 뉴스 기능에는 사용 팁 추가
                 if cog_name == "NewsCommand":
                     command_list.append("💡 **사용 팁:** 뉴스는 20분마다 자동으로 새 기사가 전송됩니다")
-                    command_list.append("🔒 **권한 안내:** 뉴스채널설정은 채널 관리 권한이 필요합니다")
+                    command_list.append("🔒 **권한 안내:** 뉴스채널설정은 채널 관리 권한이 필요합니다\n")
+
+                # 일정 기능에는 사용 팁 추가
+                if cog_name == "ScheduleCommand":
+                    leagues = ", ".join(["LCK", "LPL", "LEC", "LCS", "MSI", "WORLDS", "LJL"])
+                    command_list.append(f"💡 **지원 리그:** {leagues}")
+                    command_list.append("⏱️ **4경기 조회 가능**, `/롤리그 LCK`과 같이 입력하세요")
 
                 embed.add_field(
                     name=category_name, 
