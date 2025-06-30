@@ -41,7 +41,8 @@ async def load_cogs():
     cogs_to_load = [
         'cogs.hello',
         'cogs.news',
-        'cogs.help'
+        'cogs.help',
+        'cogs.schedule'
     ]    
     
     for cog in cogs_to_load:

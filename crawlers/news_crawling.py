@@ -31,7 +31,7 @@ def load_state() -> dict:
         dict: lastProcessedAt이 key 값으로 담긴 dict를 로드한 값.
     """
     if not STATE_FILE.exists():
-        return {"lastProcessedAt": 0}
+        return {}
     return orjson.loads(STATE_FILE.read_bytes())
 
 
@@ -75,7 +75,7 @@ async def lol_news_articles(formatted_date: str) -> List[Dict[str, Any]]:
                 content = data.get("content", [])
 
         # 이전에 가져왔던 롤 이스포츠 기사 중 마지막으로 처리한 기사의 시각을 불러옴.
-        lol_last_at = load_state().get("lol").get('lastProcessedAt', 0)
+        lol_last_at = load_state().get("lol", {}).get('lastProcessedAt', 0)
 
         # createdAt이 lol의 lastProcessedAt보다 큰(신규) 기사만 반환
         lol_new_articles = sorted(
