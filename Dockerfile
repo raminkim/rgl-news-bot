@@ -7,16 +7,20 @@ RUN useradd --create-home --shell /bin/bash botuser
 # 3. 작업 디렉터리 설정
 WORKDIR /bot
 
-# 4. 의존성 설치 전 시스템 패키지 최소로 설치 (필요 시)
-#    예) pip wheel 빌드에 필요한 gcc 등
-# RUN apt-get update && \
-#     apt-get install -y --no-install-recommends gcc && \
-#     rm -rf /var/lib/apt/lists/*
+# 4. 시스템 패키지 (최소)
+#    - libjpeg / zlib: Pillow(이미지 처리) 컴파일 런타임
+#    - fonts-dejavu-core: DejaVu Sans Bold 포함
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libjpeg-dev \
+        zlib1g-dev \
+        fonts-dejavu-core && \
+    rm -rf /var/lib/apt/lists/*
 
-# 5. 캐시 활용을 위해 requirements.txt 먼저 복사
+# 5. requirements.txt 먼저 복사 (캐시 레이어 활용)
 COPY requirements.txt .
 
-# 6. pip 설치 시 캐시 제거로 이미지 크기 최적화
+# 6. Python 의존성 설치 (캐시 비움)
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 7. 소스 코드 전체 복사
@@ -25,7 +29,7 @@ COPY . .
 # 8. 비루트 유저로 권한 전환
 USER botuser
 
-# 9. 로그가 실시간 플러시되도록 설정
+# 9. 실시간 로그 플러시
 ENV PYTHONUNBUFFERED=1
 
 # 10. 엔트리포인트

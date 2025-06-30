@@ -97,7 +97,7 @@ class ScheduleCommand(commands.Cog):
 
             # font (increase size for better readability)
             try:
-                font = ImageFont.truetype("arial.ttf", 40)
+                font = ImageFont.truetype("DejaVuSans-Bold.ttf", 40)
             except Exception:
                 # Fallback default font (will still look small, but better than failure)
                 font = ImageFont.load_default()
