@@ -1,5 +1,7 @@
 from discord.ext import commands
 import discord
+from datetime import datetime
+
 
 class GeneralHelp(commands.Cog):
     """모든 Cog의 명령어를 한눈에 보여주는 도움말 Cog입니다."""
@@ -12,73 +14,72 @@ class GeneralHelp(commands.Cog):
         """'/도움' 명령어 실행 시 호출되어, 봇에 등록된 모든 명령어를 Embed로 출력합니다."""
 
         embed = discord.Embed(
-            title='📚 명령어 목록',
-            description='아래는 사용 가능한 명령어와 간단한 설명입니다.',
-            color=0x1E90FF
+            title='📚 전체 명령어 가이드',
+            description='아래에서 사용 가능한 모든 명령어를 확인해보세요!',
+            color=0x5865F2,
+            timestamp=datetime.now()
         )
 
-        # Cog 이름을 한국어로 매핑
-        cog_name_mapping = {
-            "NewsCommand": "📰 뉴스 기능",
-            "HelloCommand": "🎮 일반 기능",
-            "GeneralHelp": "❓ 도움말",
-            "ScheduleCommand": "🗓️ 롤 리그 일정 조회 기능"
+        if ctx.guild and ctx.guild.icon:
+            embed.set_thumbnail(url=ctx.guild.icon.url)
+
+        embed.set_author(name=ctx.bot.user.name, icon_url=ctx.bot.user.avatar.url)
+        embed.set_footer(
+            text=f"요청자: {ctx.author.display_name}",
+            icon_url=ctx.author.avatar.url if ctx.author.avatar else None
+        )
+
+        cog_mapping = {
+            "NewsCommand": ("📰 뉴스 & 정보", [
+                "• `/뉴스확인` - 설정된 게임의 최신 뉴스를 확인합니다.",
+                "• `/뉴스채널설정 [게임명]` - 채널별로 게임 뉴스 알림을 설정합니다.",
+                "📌 예시: `/뉴스채널설정 발로란트`"
+            ]),
+            "HelloCommand": ("🎮 일반 기능", [
+                "• `/안녕` - 봇이 인사를 합니다."
+            ]),
+            "GeneralHelp": ("❓ 도움말 센터", [
+                "• `/도움` - 모든 명령어를 보여줍니다.",
+                "📌 예시: `/도움`"
+            ]),
+            "ScheduleCommand": ("🗓️ 롤 리그 일정", [
+                "• `/롤리그 [리그명]` - LoL 경기 일정을 확인합니다.",
+                "📌 예시: `/롤리그 LCK`"
+            ]),
+            "PlayerCommand": ("👤 선수 검색", [
+                "• `/선수 [게임명] [선수명]` - 특정 선수의 정보를 조회합니다.",
+                "📌 예시: `/선수 발로란트 k1ng`"
+            ])
         }
 
-        # Cog별로 명령어 그룹화
+        total_commands = 0
+
         for cog_name, cog in self.bot.cogs.items():
-            # 해당 Cog의 명령어 목록 가져오기
-            cog_commands = []
-            
-            for command in cog.get_commands():
-                # 표시 제외 조건: 숨김 처리된 명령어나 내부용
-                if command.hidden:
-                    continue
+            cog_display, commands_list = cog_mapping.get(cog_name, (f"📂 {cog_name}", []))
 
-                # 내부적으로 제거했지만 혹시 남아있을 수 있는 기본 help 제외
-                if command.name == 'help':
-                    continue
-
-                # /도움 자신은 목록에 포함하지 않음 (별도 처리)
-                if command.name == '도움':
-                    continue
-
-                cog_commands.append(command)
-
-            # 해당 Cog에 표시할 명령어가 있을 때만 카테고리 추가
-            if cog_commands:
-                category_name = cog_name_mapping.get(cog_name, f"📂 {cog_name}")
-                
-                # 명령어를 알파벳순으로 정렬
-                cog_commands.sort(key=lambda c: c.name)
-                
-                # 카테고리별 명령어 목록 생성
-                command_list = []
-                for command in cog_commands:
-                    signature = f" {command.signature}" if command.signature else ""
-                    help_text = command.help or '설명이 등록되지 않았습니다.'
-                    command_list.append(f"**/{command.name}{signature}**\n{help_text}")
-
-                # 뉴스 기능에는 사용 팁 추가
-                if cog_name == "NewsCommand":
-                    command_list.append("💡 **사용 팁:** 뉴스는 20분마다 자동으로 새 기사가 전송됩니다")
-                    command_list.append("🔒 **권한 안내:** 뉴스채널설정은 채널 관리 권한이 필요합니다\n")
-
-                # 일정 기능에는 사용 팁 추가
-                if cog_name == "ScheduleCommand":
-                    leagues = ", ".join(["LCK", "LPL", "LEC", "LCS", "MSI", "WORLDS", "LJL"])
-                    command_list.append(f"💡 **지원 리그:** {leagues}")
-                    command_list.append("⏱️ **4경기 조회 가능**, `/롤리그 LCK`과 같이 입력하세요")
-
+            if commands_list:
                 embed.add_field(
-                    name=category_name, 
-                    value="\n\n".join(command_list), 
+                    name=f"{cog_display}",
+                    value="\n".join(commands_list),
                     inline=False
                 )
+
+                total_commands += len(commands_list)
+                embed.add_field(name="", value="", inline=False)
+
+        embed.add_field(name="━" * 20, value="", inline=False)
+
+        embed.add_field(
+            name="🔗 추가 정보",
+            value=f"• 서버: **{ctx.guild.name if ctx.guild else '개인 메시지'}**\n"
+                  f"• 총 명령어 수: **{total_commands}개**\n"
+                  f"• 활성화된 모듈: **{len(self.bot.cogs)}개**\n\n"
+                  "📮 문의 사항은 관리자에게 연락주세요!",
+            inline=False
+        )
 
         await ctx.send(embed=embed)
 
 
 async def setup(bot: commands.Bot):
-    """봇이 Cog를 로드할 때 호출됩니다."""
-    await bot.add_cog(GeneralHelp(bot)) 
+    await bot.add_cog(GeneralHelp(bot))
