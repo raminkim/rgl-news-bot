@@ -19,6 +19,19 @@ _TEAM_IMG_KEYS = (
 )
 
 async def fetch_lol_league_schedule_months(year_str: str, league_str: str):
+    """네이버 e스포츠 API에서 *해당 연도의 월 목록*을 가져옵니다.
+
+    `/v1/schedule/year/months` 엔드포인트를 호출해 특정 연도에
+    스케줄이 존재하는 월 정보를 반환합니다. 성공하면 원본 JSON을 그대로
+    돌려주며, 실패(HTTP 200이 아님) 시 `None` 을 반환합니다.
+
+    매개변수
+        year_str (str): 4자리 연도 문자열. 예) 2024.
+        league_str (str): 리그 식별자(`topLeagueId`). 예) LCK.
+
+    반환값
+        dict | None: 응답 코드가 200이면 JSON 딕셔너리, 아니면 `None`.
+    """
     url = 'https://esports-api.game.naver.com/service/v1/schedule/year/months'
 
     params = {
@@ -45,6 +58,19 @@ async def fetch_lol_league_schedule_months(year_str: str, league_str: str):
                 return None
             
 async def fetch_monthly_league_schedule(year_month_str: str, league_str: str):
+    """네이버 e스포츠 API에서 *특정 월*의 경기 일정을 가져옵니다.
+
+    `/v2/schedule/month` 엔드포인트를 호출해 주어진 월(YYYYMM)과
+    리그에 해당하는 경기 정보를 받아옵니다. 이 함수는 네트워크 요청만
+    수행하고, 파싱은 `parse_lol_month_days()` 에서 담당합니다.
+
+    매개변수
+        year_month_str (str): 연월 문자열 `YYYYMM`. 예) 202404.
+        league_str (str): 리그 식별자(`topLeagueId`).
+
+    반환값
+        dict | None: 성공 시 JSON 딕셔너리, 실패 시 `None`.
+    """
     url = 'https://esports-api.game.naver.com/service/v2/schedule/month'
 
     params = {
