@@ -1,11 +1,15 @@
 import discord
 import os
 import asyncio
+import logging
 
 from discord.ext import commands
 from dotenv import load_dotenv
 
 from server.keep_alive import keep_alive
+
+# 로깅 설정
+logging.basicConfig(level=logging.INFO)
 
 # env 로드
 load_dotenv()
@@ -53,8 +57,8 @@ async def load_cogs():
         except Exception as e:
             print(f'❌ {cog} 로드 실패: {e}')
 
-async def main():
-    """메인 실행 함수"""
+async def start_bot():
+    """봇을 시작하고 429 에러 시 재시도합니다."""
     token = os.getenv('DISCORD_BOT_TOKEN')
 
     if not token:
@@ -62,16 +66,41 @@ async def main():
         print("💡 .env 파일에 'DISCORD_BOT_TOKEN=your_token_here' 를 추가해주세요.")
         return
 
+    while True:
+        try:
+            await bot.start(token)
+        except discord.HTTPException as e:
+            if e.status == 429:
+                retry = float(e.response.headers.get("Retry-After", 5))
+                logging.warning("Discord Rate Limit (429) — %s초 후 재시도", retry)
+                await asyncio.sleep(retry)
+                continue
+            else:
+                logging.error(f"Discord HTTP 에러: {e}")
+                raise
+        except Exception as e:
+            # 429 에러가 일반 Exception으로 잡힐 경우 처리
+            error_str = str(e)
+            if "429" in error_str or "Too Many Requests" in error_str:
+                retry_time = 5  # 기본 5초 대기
+                logging.warning("429 에러 감지 — %s초 후 재시도: %s", retry_time, error_str)
+                await asyncio.sleep(retry_time)
+                continue
+            else:
+                logging.error(f"봇 시작 실패: {e}")
+                # 다른 에러의 경우 잠시 대기 후 재시도
+                await asyncio.sleep(10)
+                continue
+
+async def main():
+    """메인 실행 함수"""
     print("🚀 이스포츠 뉴스 봇을 시작합니다...")
     
     # Cog 로드
     await load_cogs()
 
     # 봇 시작
-    try:
-        await bot.start(token)
-    except Exception as e:
-        print(f"❌ 봇 시작 실패: {e}")
+    await start_bot()
 
 if __name__ == '__main__':
     # 서버 핑용 웹페이지(keep-alive) 기동
