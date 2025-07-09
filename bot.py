@@ -72,6 +72,13 @@ async def start_bot():
         except discord.HTTPException as e:
             if e.status == 429:
                 retry = float(e.response.headers.get("Retry-After", 5))
+                # 과도한 대기 시간 제한 (최대 5분)
+                max_wait = 300  # 5분
+                if retry > max_wait:
+                    logging.error(f"⚠️ 과도한 대기 시간 감지: {retry}초 → {max_wait}초로 제한")
+                    logging.error("🔍 봇 중복 실행 또는 토큰 공유 문제 의심됨")
+                    retry = max_wait
+                    
                 logging.warning("Discord Rate Limit (429) — %s초 후 재시도", retry)
                 await asyncio.sleep(retry)
                 continue
