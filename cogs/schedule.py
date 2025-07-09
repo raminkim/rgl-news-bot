@@ -66,7 +66,6 @@ class ScheduleCommand(commands.Cog):
         upcoming = upcoming[:4]
 
         # 4) 이미지 배너 생성 및 Embed 전송
-
         async def build_scoreboard(team1: dict, team2: dict, score1, score2):
             """팀 로고와 점수를 조합한 PNG BytesIO 반환"""
             async with aiohttp.ClientSession() as session:
@@ -80,29 +79,34 @@ class ScheduleCommand(commands.Cog):
                 img1 = await fetch_img(team1["img"])
                 img2 = await fetch_img(team2["img"])
 
-            # resize logos (slightly larger for better balance with bigger font)
+            # 로고 사이즈 조정
             size = (70, 70)
             img1.thumbnail(size, Image.LANCZOS)
             img2.thumbnail(size, Image.LANCZOS)
 
-            # canvas size widened and heightened to accommodate bigger font
+            # 캔버스 사이즈 조정
             W, H = 460, 90
             canvas = Image.new("RGBA", (W, H), (255, 255, 255, 0))
             draw = ImageDraw.Draw(canvas)
 
-            # positions
+            # 위치 조정
             y = (H - img1.height)//2
             canvas.paste(img1, (10, y), img1)
             canvas.paste(img2, (W - img2.width - 10, y), img2)
 
-            # font (increase size for better readability)
+            # 폰트 조정
             try:
                 font = ImageFont.truetype("DejaVuSans-Bold.ttf", 32)
             except Exception:
-                # Fallback default font (will still look small, but better than failure)
+                # 기본 폰트 사용
                 font = ImageFont.load_default()
 
-            score_text = f"{score1 if score1 is not None else '-'} : {score2 if score2 is not None else '-'}"
+            if score1 is None and score2 is None:
+                score_text = "- : -"
+            else:
+                left_score = 0 if score1 is None else score1
+                right_score = 0 if score2 is None else score2
+                score_text = f"{left_score} : {right_score}"
             try:
                 tw, th = draw.textsize(score_text, font=font)  # Pillow <10
             except AttributeError:
