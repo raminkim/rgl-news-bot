@@ -2,6 +2,7 @@ import discord
 import os
 import asyncio
 import logging
+import signal
 
 from discord.ext import commands
 from dotenv import load_dotenv
@@ -57,6 +58,15 @@ async def load_cogs():
         except Exception as e:
             print(f'❌ {cog} 로드 실패: {e}')
 
+async def shutdown(signal_received, loop):
+    """종료 신호를 처리하는 함수"""
+    print(f"🛑 종료 신호 {signal_received.name} 수신됨...")
+    print("📡 Discord 연결을 종료하는 중...")
+    if not bot.is_closed():
+        await bot.close()
+    print("✅ 봇이 안전하게 종료되었습니다.")
+    loop.stop()
+
 async def start_bot():
     """봇을 시작하고 429 에러 시 재시도합니다."""
     token = os.getenv('DISCORD_BOT_TOKEN')
@@ -102,6 +112,13 @@ async def start_bot():
 async def main():
     """메인 실행 함수"""
     print("🚀 이스포츠 뉴스 봇을 시작합니다...")
+
+    # 봇의 이벤트 루프 가져오기
+    loop = asyncio.get_event_loop()
+    
+    # Render가 보내는 SIGTERM 신호를 받았을 때 shutdown 함수를 실행하도록 등록
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(shutdown(s, loop)))
     
     # Cog 로드
     await load_cogs()
