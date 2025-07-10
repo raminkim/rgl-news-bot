@@ -126,9 +126,15 @@ class ScheduleCommand(commands.Cog):
 
             title = f"{m['team1']} vs {m['team2']}"
 
-            desc_lines = [date_abs if m["status"] == "BEFORE" else f"{date_abs} | 종료"]
-
-            colour = discord.Colour.blue() if m["status"] == "BEFORE" else discord.Colour.green()
+            if m["status"] == "BEFORE":
+                desc_lines = [date_abs]
+                colour = discord.Colour.blue()
+            elif m["status"] == "STARTED":
+                desc_lines = [f"{date_abs} | 진행중"]
+                colour = discord.Colour.orange()
+            else:  # FINISHED or other status
+                desc_lines = [f"{date_abs} | 종료"]
+                colour = discord.Colour.green()
 
             embed = discord.Embed(title=title, description="\n".join(desc_lines), colour=colour)
 
