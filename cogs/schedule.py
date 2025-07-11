@@ -7,19 +7,16 @@ import aiohttp
 from PIL import Image, ImageDraw, ImageFont
 import asyncio
 
-# bot.py에서 safe_send 함수 import
-import sys
-sys.path.append('..')
-try:
-    from bot import safe_send
-except ImportError:
-    # Import 실패 시 로컬 구현
-    async def safe_send(ctx_or_channel, content=None, **kwargs):
-        try:
+async def safe_send(ctx_or_channel, content=None, **kwargs):
+    """Rate Limit 안전한 메시지 전송"""
+    try:
+        if hasattr(ctx_or_channel, 'send'):
             return await ctx_or_channel.send(content, **kwargs)
-        except Exception as e:
-            print(f"메시지 전송 실패: {e}")
-            return None
+        else:
+            return await ctx_or_channel.send(content, **kwargs)
+    except Exception as e:
+        print(f"메시지 전송 실패: {e}")
+        return None
 
 LEAGUE_TYPE = {
     "LCK": "lck",
@@ -124,7 +121,25 @@ class ScheduleCommand(commands.Cog):
                 try:
                     font = ImageFont.truetype("DejaVuSans-Bold.ttf", 32)
                 except Exception:
-                    font = ImageFont.load_default()
+                    try:
+                        # 시스템 폰트 경로들을 시도
+                        font_paths = [
+                            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",  # Linux
+                            "/System/Library/Fonts/Arial.ttf",  # macOS
+                            "C:/Windows/Fonts/arial.ttf",  # Windows
+                            "/usr/share/fonts/TTF/arial.ttf",  # Some Linux distributions
+                        ]
+                        font = None
+                        for font_path in font_paths:
+                            try:
+                                font = ImageFont.truetype(font_path, 32)
+                                break
+                            except:
+                                continue
+                        if font is None:
+                            raise Exception("No suitable font found")
+                    except Exception:
+                        font = ImageFont.load_default()
 
                 if score1 is None and score2 is None:
                     score_text = "- : -"

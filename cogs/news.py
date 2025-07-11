@@ -7,19 +7,16 @@ from datetime import date, datetime
 
 from crawlers.news_crawling import lol_news_articles, valorant_news_articles, overwatch_news_articles
 
-# bot.py에서 safe_send 함수 import
-import sys
-sys.path.append('..')
-try:
-    from bot import safe_send
-except ImportError:
-    # Import 실패 시 로컬 구현
-    async def safe_send(ctx_or_channel, content=None, **kwargs):
-        try:
+async def safe_send(ctx_or_channel, content=None, **kwargs):
+    """Rate Limit 안전한 메시지 전송"""
+    try:
+        if hasattr(ctx_or_channel, 'send'):
             return await ctx_or_channel.send(content, **kwargs)
-        except Exception as e:
-            print(f"메시지 전송 실패: {e}")
-            return None
+        else:
+            return await ctx_or_channel.send(content, **kwargs)
+    except Exception as e:
+        print(f"메시지 전송 실패: {e}")
+        return None
 
 class NewsCommand(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -27,9 +24,13 @@ class NewsCommand(commands.Cog):
         self.channel_games = {}
 
     async def cog_load(self):
-        if not self.news_loop.is_running():
-            self.news_loop.start()
-            print("✅ 뉴스 자동 전송 루프 시작됨")
+        try:
+            if not self.news_loop.is_running():
+                self.news_loop.start()
+                print("✅ 뉴스 자동 전송 루프 시작됨")
+        except Exception as e:
+            print(f"⚠️ 뉴스 루프 시작 실패: {e}")
+            print("⚠️ 뉴스 자동 전송은 비활성화됩니다. 수동 명령어는 여전히 사용 가능합니다.")
 
     async def cog_unload(self):
         if self.news_loop.is_running():

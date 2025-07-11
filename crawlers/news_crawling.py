@@ -69,7 +69,8 @@ async def lol_news_articles(formatted_date: str) -> List[Dict[str, Any]]:
     }
     
     try:
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url=url, params=params, headers=headers) as response:
                 data = await response.json()
                 content = data.get("content", [])

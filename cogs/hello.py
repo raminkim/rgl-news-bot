@@ -1,19 +1,16 @@
 import discord
 from discord.ext import commands
 
-# bot.py에서 safe_send 함수 import
-import sys
-sys.path.append('..')
-try:
-    from bot import safe_send
-except ImportError:
-    # Import 실패 시 로컬 구현
-    async def safe_send(ctx_or_channel, content=None, **kwargs):
-        try:
+async def safe_send(ctx_or_channel, content=None, **kwargs):
+    """Rate Limit 안전한 메시지 전송"""
+    try:
+        if hasattr(ctx_or_channel, 'send'):
             return await ctx_or_channel.send(content, **kwargs)
-        except Exception as e:
-            print(f"메시지 전송 실패: {e}")
-            return None
+        else:
+            return await ctx_or_channel.send(content, **kwargs)
+    except Exception as e:
+        print(f"메시지 전송 실패: {e}")
+        return None
 
 class HelloCommand(commands.Cog):
     def __init__(self, bot: commands.Bot):
