@@ -7,6 +7,20 @@ import aiohttp
 from PIL import Image, ImageDraw, ImageFont
 import asyncio
 
+# bot.py에서 safe_send 함수 import
+import sys
+sys.path.append('..')
+try:
+    from bot import safe_send
+except ImportError:
+    # Import 실패 시 로컬 구현
+    async def safe_send(ctx_or_channel, content=None, **kwargs):
+        try:
+            return await ctx_or_channel.send(content, **kwargs)
+        except Exception as e:
+            print(f"메시지 전송 실패: {e}")
+            return None
+
 LEAGUE_TYPE = {
     "LCK": "lck",
     "LPL": "lpl",
@@ -29,7 +43,7 @@ class ScheduleCommand(commands.Cog):
         try:
             league_key = league_str.upper()
             if league_key not in LEAGUE_TYPE:
-                await ctx.send(f"❌ 지원하지 않는 리그: {league_key}")
+                await safe_send(ctx, f"❌ 지원하지 않는 리그: {league_key}")
                 return
 
             league_code = LEAGUE_TYPE[league_key]
@@ -63,7 +77,7 @@ class ScheduleCommand(commands.Cog):
                     break
 
             if not upcoming:
-                await ctx.send("❌ 예정된 경기를 찾을 수 없습니다.")
+                await safe_send(ctx, "❌ 예정된 경기를 찾을 수 없습니다.")
                 return
 
             upcoming.sort(key=lambda m: m["startDate"])
@@ -71,17 +85,9 @@ class ScheduleCommand(commands.Cog):
 
             print(f"경기 {len(upcoming)}개 발견, 임베드 생성 시작")
             
-        except discord.HTTPException as e:
-            if e.status == 429:
-                retry_after = float(e.response.headers.get("Retry-After", 60))
-                print(f"Discord Rate Limit 발생: {retry_after}초 대기 필요")
-                await ctx.send(f"⏰ 잠시 기다려주세요. {int(retry_after)}초 후 다시 시도해주세요.")
-                return
-            else:
-                print(f"Discord 에러: {e}")
-                return
         except Exception as e:
             print(f"롤리그 명령어 실행 중 오류: {e}")
+            await safe_send(ctx, "❌ 경기 일정을 가져오는 중 오류가 발생했습니다.")
             return
 
         # 이미지 배너 생성 및 Embed 전송
@@ -143,7 +149,7 @@ class ScheduleCommand(commands.Cog):
                 print(f"이미지 생성 실패: {e}")
                 return None
 
-        # Discord 메시지 전송 (Rate Limit 방지)
+        # Discord 메시지 전송 (safe_send 사용)
         for i, m in enumerate(upcoming):
             try:
                 start_epoch = int(datetime.fromisoformat(m["startDate"]).timestamp())
@@ -168,25 +174,16 @@ class ScheduleCommand(commands.Cog):
                     if buf:
                         file = discord.File(buf, filename="score.png")
                         embed.set_image(url="attachment://score.png")
-                        await ctx.send(file=file, embed=embed)
+                        await safe_send(ctx, file=file, embed=embed)
                     else:
-                        await ctx.send(embed=embed)
+                        await safe_send(ctx, embed=embed)
                 else:
-                    await ctx.send(embed=embed)
+                    await safe_send(ctx, embed=embed)
 
                 # 메시지 전송 간격 (Discord Rate Limit 방지)
-                if i < len(upcoming) - 1:  # 마지막 메시지가 아니면 대기
+                if i < len(upcoming) - 1:
                     await asyncio.sleep(1)
 
-            except discord.HTTPException as e:
-                if e.status == 429:
-                    retry_after = float(e.response.headers.get("Retry-After", 60))
-                    print(f"메시지 전송 Rate Limit: {retry_after}초 대기")
-                    await asyncio.sleep(retry_after)
-                    continue
-                else:
-                    print(f"메시지 전송 실패: {e}")
-                    break
             except Exception as e:
                 print(f"임베드 생성/전송 실패: {e}")
                 continue
@@ -195,9 +192,10 @@ class ScheduleCommand(commands.Cog):
     async def schedule_error(self, ctx, error):
         """롤리그 명령어 에러 처리"""
         if isinstance(error, commands.CommandOnCooldown):
-            await ctx.send(f"⏰ 잠시만요! {error.retry_after:.0f}초 후에 다시 시도해주세요.")
+            await safe_send(ctx, f"⏰ 잠시만요! {error.retry_after:.0f}초 후에 다시 시도해주세요.")
         else:
             print(f"롤리그 명령어 에러: {error}")
+            await safe_send(ctx, "❌ 명령어 실행 중 오류가 발생했습니다.")
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(ScheduleCommand(bot))

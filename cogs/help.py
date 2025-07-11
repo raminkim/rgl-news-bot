@@ -1,86 +1,103 @@
-from discord.ext import commands
 import discord
-from datetime import datetime
+from discord.ext import commands
 
+# bot.py에서 safe_send 함수 import
+import sys
+sys.path.append('..')
+try:
+    from bot import safe_send
+except ImportError:
+    # Import 실패 시 로컬 구현
+    async def safe_send(ctx_or_channel, content=None, **kwargs):
+        try:
+            return await ctx_or_channel.send(content, **kwargs)
+        except Exception as e:
+            print(f"메시지 전송 실패: {e}")
+            return None
 
-class GeneralHelp(commands.Cog):
-    """모든 Cog의 명령어를 한눈에 보여주는 도움말 Cog입니다."""
-
+class HelpCommand(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @commands.command(name='도움', help='모든 명령어를 보여줍니다.')
-    async def show_help(self, ctx: commands.Context):
-        """'/도움' 명령어 실행 시 호출되어, 봇에 등록된 모든 명령어를 Embed로 출력합니다."""
-
-        embed = discord.Embed(
-            title='📚 전체 명령어 가이드',
-            description='아래에서 사용 가능한 모든 명령어를 확인해보세요!',
-            color=0x5865F2,
-            timestamp=datetime.now()
-        )
-
-        if ctx.guild and ctx.guild.icon:
-            embed.set_thumbnail(url=ctx.guild.icon.url)
-
-        embed.set_author(name=ctx.bot.user.name, icon_url=ctx.bot.user.avatar.url)
-        embed.set_footer(
-            text=f"요청자: {ctx.author.display_name}",
-            icon_url=ctx.author.avatar.url if ctx.author.avatar else None
-        )
-
-        cog_mapping = {
-            "NewsCommand": ("📰 뉴스 & 정보", [
-                "• `/뉴스확인` - 설정된 게임의 최신 뉴스를 확인합니다.",
-                "• `/뉴스채널설정 [게임명]` - 채널별로 게임 뉴스 알림을 설정합니다.",
-                "📌 예시: `/뉴스채널설정 발로란트`"
-            ]),
-            "HelloCommand": ("🎮 일반 기능", [
-                "• `/안녕` - 봇이 인사를 합니다.",
-                "• `/핑` - 봇의 응답 속도를 확인합니다."
-            ]),
-            "GeneralHelp": ("❓ 도움말 센터", [
-                "• `/도움` - 모든 명령어를 보여줍니다.",
-                "📌 예시: `/도움`"
-            ]),
-            "ScheduleCommand": ("🗓️ 롤 리그 일정", [
-                "• `/롤리그 [리그명]` - LoL 경기 일정을 확인합니다.",
-                "📌 예시: `/롤리그 LCK`"
-            ]),
-            "PlayerCommand": ("👤 선수 검색", [
-                "• `/선수 [게임명] [선수명]` - 특정 선수의 정보를 조회합니다.",
-                "📌 예시: `/선수 발로란트 k1ng`"
-            ])
-        }
-
-        total_commands = 0
-
-        for cog_name, cog in self.bot.cogs.items():
-            cog_display, commands_list = cog_mapping.get(cog_name, (f"📂 {cog_name}", []))
-
-            if commands_list:
+    @commands.command(name='도움', help='봇의 모든 명령어를 확인할 수 있습니다.')
+    async def help(self, ctx: commands.Context, command_name: str = None):
+        if command_name:
+            command = self.bot.get_command(command_name)
+            if command:
+                embed = discord.Embed(
+                    title=f"📋 '{command_name}' 명령어 도움말",
+                    description=command.help or "설명이 제공되지 않았습니다.",
+                    color=0x00ff56
+                )
+                
+                if command.aliases:
+                    embed.add_field(
+                        name="📎 별칭",
+                        value=', '.join([f"`/{alias}`" for alias in command.aliases]),
+                        inline=False
+                    )
+                
+                if hasattr(command, 'signature') and command.signature:
+                    embed.add_field(
+                        name="📝 사용법",
+                        value=f"`/{command.name} {command.signature}`",
+                        inline=False
+                    )
+                
+                embed.set_footer(text="💡 <필수> [선택] 형태로 표시됩니다.")
+            else:
+                embed = discord.Embed(
+                    title="❌ 명령어를 찾을 수 없습니다",
+                    description=f"'{command_name}' 명령어가 존재하지 않습니다.\n`/도움`으로 전체 명령어를 확인해보세요!",
+                    color=0xff0000
+                )
+        else:
+            embed = discord.Embed(
+                title="🤖 이스포츠 뉴스 봇 도움말",
+                description="아래는 사용 가능한 모든 명령어입니다.",
+                color=0x00ff56
+            )
+            
+            commands_dict = {}
+            for command in self.bot.commands:
+                cog_name = command.cog.qualified_name if command.cog else "기타"
+                
+                if cog_name not in commands_dict:
+                    commands_dict[cog_name] = []
+                commands_dict[cog_name].append(command)
+            
+            cog_emojis = {
+                "HelloCommand": "👋",
+                "HelpCommand": "📋", 
+                "NewsCommand": "📰",
+                "ScheduleCommand": "📅",
+                "PlayerCommand": "🎮",
+                "기타": "🔧"
+            }
+            
+            for cog_name, commands_list in commands_dict.items():
+                emoji = cog_emojis.get(cog_name, "🔧")
+                commands_text = []
+                
+                for cmd in commands_list:
+                    cmd_help = cmd.help or "설명 없음"
+                    commands_text.append(f"`/{cmd.name}` - {cmd_help}")
+                
                 embed.add_field(
-                    name=f"{cog_display}",
-                    value="\n".join(commands_list),
+                    name=f"{emoji} {cog_name}",
+                    value="\n".join(commands_text),
                     inline=False
                 )
+            
+            embed.add_field(
+                name="📌 사용 팁",
+                value="• 특정 명령어의 자세한 정보: `/도움 명령어이름`\n• 예시: `/도움 뉴스확인`",
+                inline=False
+            )
+            
+            embed.set_footer(text="문의사항이 있으시면 관리자에게 연락해주세요! 🛠️")
 
-                total_commands += len(commands_list)
-                embed.add_field(name="", value="", inline=False)
-
-        embed.add_field(name="━" * 20, value="", inline=False)
-
-        embed.add_field(
-            name="🔗 추가 정보",
-            value=f"• 서버: **{ctx.guild.name if ctx.guild else '개인 메시지'}**\n"
-                  f"• 총 명령어 수: **{total_commands}개**\n"
-                  f"• 활성화된 모듈: **{len(self.bot.cogs)}개**\n\n"
-                  "📮 문의 사항은 관리자에게 연락주세요!",
-            inline=False
-        )
-
-        await ctx.send(embed=embed)
-
+        await safe_send(ctx, embed=embed)
 
 async def setup(bot: commands.Bot):
-    await bot.add_cog(GeneralHelp(bot))
+    await bot.add_cog(HelpCommand(bot))

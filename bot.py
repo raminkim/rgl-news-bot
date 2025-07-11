@@ -3,6 +3,7 @@ import os
 import asyncio
 import logging
 import signal
+import random
 
 from discord.ext import commands
 from dotenv import load_dotenv
@@ -20,6 +21,115 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='/', intents=intents)
 
+class RateLimitHandler:
+    """Discord Rate Limit 지수 백오프 처리"""
+    
+    def __init__(self):
+        self.retry_count = 0
+        self.base_delay = 1  # 기본 대기 시간 (초)
+        self.max_retries = 5  # 최대 재시도 횟수
+        self.max_delay = 300  # 최대 대기 시간 (5분)
+    
+    async def handle_rate_limit(self, retry_after: float = None) -> bool:
+        """
+        Rate Limit 처리 with 지수 백오프
+        Returns: True if should continue, False if should stop
+        """
+        self.retry_count += 1
+        
+        if self.retry_count > self.max_retries:
+            print(f"🚨 최대 재시도 횟수({self.max_retries}) 초과")
+            return False
+        
+        if retry_after:
+            # Discord가 명시한 대기 시간 준수
+            if retry_after > 3600:  # 1시간 초과 시 포기
+                print(f"🚨 심각한 Rate Limit: {retry_after}초 ({retry_after/60:.1f}분)")
+                print("🛑 봇을 종료합니다. 토큰 재생성을 고려해주세요.")
+                return False
+            
+            wait_time = retry_after
+            print(f"⏰ Discord 지정 대기: {wait_time}초 ({wait_time/60:.1f}분)")
+        else:
+            # 지수 백오프 계산 (Discord 권장)
+            exponential_delay = self.base_delay * (2 ** (self.retry_count - 1))
+            jitter = random.uniform(0, 1)  # 지터 추가 (동시 요청 방지)
+            wait_time = min(exponential_delay + jitter, self.max_delay)
+            
+            print(f"📈 지수 백오프 대기: {wait_time:.1f}초 (재시도 {self.retry_count}/{self.max_retries})")
+        
+        print(f"⏳ {wait_time:.0f}초 대기 시작...")
+        await asyncio.sleep(wait_time)
+        print(f"✅ {wait_time:.0f}초 대기 완료, 재시도합니다")
+        return True
+    
+    def reset(self):
+        """성공 시 카운터 리셋"""
+        self.retry_count = 0
+
+    def is_rate_limit_error(self, error) -> tuple[bool, float]:
+        """
+        Rate Limit 에러인지 확인하고 대기시간 반환
+        Returns: (is_rate_limit, retry_after)
+        """
+        retry_after = 0
+        
+        if isinstance(error, discord.HTTPException):
+            if error.status == 429:  # 디스코드 레이트 리밋
+                retry_after = float(error.response.headers.get("Retry-After", 0))
+                return True, retry_after
+            elif error.status == 503:  # 서비스 불가
+                return True, 60
+        
+        # Cloudflare Rate Limit 감지
+        error_str = str(error).lower()
+        if any(phrase in error_str for phrase in [
+            "rate limit", "too many requests", "error 1015", 
+            "cloudflare", "being rate limited"
+        ]):
+            return True, 120
+        
+        return False, 0
+
+async def safe_send(ctx_or_channel, content=None, **kwargs):
+    """
+    Rate Limit 안전한 메시지 전송
+    Discord 정책을 완전히 준수하는 중앙집중식 전송 함수
+    """
+    max_attempts = 3
+    local_handler = RateLimitHandler()
+    
+    for attempt in range(max_attempts):
+        try:
+            if hasattr(ctx_or_channel, 'send'):
+                # Context 또는 Channel 객체
+                return await ctx_or_channel.send(content, **kwargs)
+            else:
+                # 기타 경우
+                return await ctx_or_channel.send(content, **kwargs)
+                
+        except Exception as e:
+            is_rate_limit, retry_after = local_handler.is_rate_limit_error(e)
+            
+            if is_rate_limit:
+                if attempt < max_attempts - 1:  # 마지막 시도가 아니면
+                    should_continue = await local_handler.handle_rate_limit(retry_after)
+                    if should_continue:
+                        continue
+                
+                # Rate Limit 처리 실패 시 콘솔에만 기록
+                logging.warning(f"메시지 전송 Rate Limit: {e}")
+                return None
+            else:
+                # Rate Limit이 아닌 다른 에러
+                logging.error(f"메시지 전송 실패: {e}")
+                return None
+    
+    return None
+
+# 글로벌 Rate Limit 핸들러
+rate_limit_handler = RateLimitHandler()
+
 # on_ready 이벤트
 @bot.event
 async def on_ready():
@@ -27,42 +137,36 @@ async def on_ready():
     print(f'📡 봇이 {len(bot.guilds)}개의 서버에 연결되어 있습니다.')
     print('Commands:', [cmd.name for cmd in bot.commands])
     print('='*50)
+    
+    # 성공적 연결 시 Rate Limit 카운터 리셋
+    rate_limit_handler.reset()
 
 # 오류 처리
 @bot.event
 async def on_command_error(ctx, error):
     # HTTPException (429 등)이 발생한 경우 Discord로 메시지를 보내지 않음
     if isinstance(error, discord.HTTPException):
+        if error.status == 429:
+            # Rate Limit 발생 시 안전하게 처리
+            retry_after = float(error.response.headers.get("Retry-After", 0))
+            logging.warning(f"명령어 실행 중 Rate Limit 발생: {retry_after}초")
         print(f"Discord HTTP 오류 발생 (메시지 전송 안함): {error}")
         return
     
-    # 사용자 경험을 위한 안전한 에러 메시지 전송
-    try:
-        if isinstance(error, commands.CommandNotFound):
-            await ctx.send(f"❌ '{ctx.message.content}' 명령어를 찾을 수 없습니다. `/도움`을 입력해보세요.")
-        elif isinstance(error, commands.MissingPermissions):
-            await ctx.send("❌ 이 명령어를 사용할 권한이 없습니다.")
-        elif isinstance(error, commands.MissingRequiredArgument):
-            await ctx.send(f"❌ 필수 인수가 누락되었습니다. `/도움 {ctx.command}`을(를) 확인해보세요.")
-        elif isinstance(error, commands.CommandOnCooldown):
-            await ctx.send(f"⏰ 잠시만요! {error.retry_after:.0f}초 후에 다시 시도해주세요.")
-        else:
-            await ctx.send(f"❌ 명령어 실행 중 오류가 발생했습니다.")
-            print(f"기타 오류 상세: {error}")
-            
-    except discord.HTTPException as send_error:
-        # 에러 메시지 전송 중 429 에러 발생 시 콘솔에만 기록
-        print(f"에러 메시지 전송 실패 (Rate Limit 방지): {send_error}")
-        if isinstance(error, commands.CommandNotFound):
-            print(f"명령어를 찾을 수 없음: {ctx.message.content}")
-        elif isinstance(error, commands.CommandOnCooldown):
-            print(f"쿨다운 중: {error}")
-        else:
-            print(f"원본 오류: {error}")
-    except Exception as send_error:
-        # 다른 예외 발생 시에도 안전하게 처리
-        print(f"에러 메시지 전송 중 예외: {send_error}")
-        print(f"원본 오류: {error}")
+    # 사용자 경험을 위한 안전한 에러 메시지 전송 (safe_send 사용)
+    if isinstance(error, commands.CommandNotFound):
+        await safe_send(ctx, f"❌ '{ctx.message.content}' 명령어를 찾을 수 없습니다. `/도움`을 입력해보세요.")
+    elif isinstance(error, commands.MissingPermissions):
+        await safe_send(ctx, "❌ 이 명령어를 사용할 권한이 없습니다.")
+    elif isinstance(error, commands.MissingRequiredArgument):
+        await safe_send(ctx, f"❌ 필수 인수가 누락되었습니다. `/도움 {ctx.command}`을(를) 확인해보세요.")
+    elif isinstance(error, commands.CommandOnCooldown):
+        await safe_send(ctx, f"⏰ 잠시만요! {error.retry_after:.0f}초 후에 다시 시도해주세요.")
+    else:
+        await safe_send(ctx, f"❌ 명령어 실행 중 오류가 발생했습니다.")
+        print(f"기타 오류 상세: {error}")
+        
+    # 전송 실패 시 콘솔 로그만 기록 (safe_send에서 이미 처리)
 
 async def load_cogs():
     """모든 cog를 로드합니다."""
@@ -91,7 +195,7 @@ async def shutdown(signal_received, loop):
     loop.stop()
 
 async def start_bot():
-    """봇을 시작하고 429 에러 시 재시도합니다."""
+    """봇을 시작하고 429 에러 시 지수 백오프로 재시도합니다."""
     token = os.getenv('DISCORD_BOT_TOKEN')
 
     if not token:
@@ -99,58 +203,54 @@ async def start_bot():
         print("💡 .env 파일에 'DISCORD_BOT_TOKEN=your_token_here' 를 추가해주세요.")
         return
 
-    max_retries = 3  # 최대 3번만 재시도
-    retry_count = 0
-
-    while retry_count < max_retries:
+    print("🔑 토큰 확인 완료")
+    
+    while True:
         try:
+            print("🚀 Discord 서버 연결 시도 중...")
             await bot.start(token)
             break  # 성공 시 루프 종료
             
         except discord.HTTPException as e:
             if e.status == 429:
-                retry_after = float(e.response.headers.get("Retry-After", 60))
+                retry_after = float(e.response.headers.get("Retry-After", 0))
                 
-                # 과도한 대기 시간 감지 시 봇 종료
-                if retry_after > 1800:  # 30분 초과 시
-                    logging.error(f"🚨 심각한 Rate Limit 감지: {retry_after}초 ({retry_after/60:.1f}분)")
-                    logging.error("🛑 봇을 종료합니다. 토큰 재생성을 고려해주세요.")
-                    logging.error("💡 1-2시간 후 다시 시도하거나 Discord 개발자 포털에서 토큰을 재생성하세요.")
+                print(f"⏰ Discord Rate Limit 발생!")
+                print(f"📊 상태 코드: {e.status}")
+                print(f"⏱️ 대기 시간: {retry_after}초 ({retry_after/60:.1f}분)")
+                
+                # 지수 백오프로 Rate Limit 처리
+                should_continue = await rate_limit_handler.handle_rate_limit(retry_after)
+                if not should_continue:
+                    print("🛑 Rate Limit 처리 실패. 봇을 종료합니다.")
+                    print("💡 토큰 재생성 후 1-2시간 뒤 다시 시도해주세요.")
                     return
-                
-                # 일반적인 Rate Limit 처리 (최대 30분)
-                max_wait = 1800  # 30분
-                if retry_after > max_wait:
-                    logging.error(f"⚠️ 대기 시간 제한: {retry_after}초 → {max_wait}초로 제한")
-                    retry_after = max_wait
-                    
-                logging.warning("Discord Rate Limit (429) — %s초 후 재시도", retry_after)
-                await asyncio.sleep(retry_after)
-                retry_count += 1
                 continue
             else:
-                logging.error(f"Discord HTTP 에러: {e}")
-                retry_count += 1
-                await asyncio.sleep(10)
+                print(f"❌ Discord HTTP 에러: {e.status} - {e}")
+                should_continue = await rate_limit_handler.handle_rate_limit()
+                if not should_continue:
+                    return
                 continue
                 
         except Exception as e:
             error_str = str(e)
-            if "429" in error_str or "Too Many Requests" in error_str:
-                retry_time = 60  # 60초 대기
-                logging.warning("429 에러 감지 — %s초 후 재시도: %s", retry_time, error_str)
-                await asyncio.sleep(retry_time)
-                retry_count += 1
+            print(f"❌ 봇 시작 중 에러: {error_str}")
+            
+            if "429" in error_str or "Too Many Requests" in error_str or "rate limit" in error_str.lower():
+                print("🔍 Rate Limit 에러로 감지됨")
+                # 문자열에서 Rate Limit 감지
+                should_continue = await rate_limit_handler.handle_rate_limit()
+                if not should_continue:
+                    print("🛑 Rate Limit 처리 실패. 봇을 종료합니다.")
+                    return
                 continue
             else:
-                logging.error(f"봇 시작 실패: {e}")
-                retry_count += 1
-                await asyncio.sleep(10)
+                print("🔍 일반 에러로 판단, 재시도")
+                should_continue = await rate_limit_handler.handle_rate_limit()
+                if not should_continue:
+                    return
                 continue
-    
-    # 최대 재시도 횟수 초과
-    logging.error("🚨 최대 재시도 횟수 초과. 봇을 종료합니다.")
-    logging.error("💡 토큰 재생성 후 1-2시간 뒤 다시 시도해주세요.")
 
 async def main():
     """메인 실행 함수"""
@@ -159,14 +259,22 @@ async def main():
     # 봇의 이벤트 루프 가져오기
     loop = asyncio.get_event_loop()
     
-    # Render가 보내는 SIGTERM 신호를 받았을 때 shutdown 함수를 실행하도록 등록
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(shutdown(s, loop)))
+    # Windows에서는 signal handler 사용 불가, try-except로 처리
+    try:
+        # Render가 보내는 SIGTERM 신호를 받았을 때 shutdown 함수를 실행하도록 등록
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(shutdown(s, loop)))
+        print("✅ Signal handlers 등록 완료")
+    except NotImplementedError:
+        # Windows에서는 signal handler가 지원되지 않음
+        print("⚠️ Windows 환경: Signal handlers 건너뜀")
     
     # Cog 로드
+    print("📂 Cog 로드 시작...")
     await load_cogs()
 
     # 봇 시작
+    print("🔗 Discord 연결 시작...")
     await start_bot()
 
 if __name__ == '__main__':
