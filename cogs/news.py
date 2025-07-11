@@ -217,7 +217,8 @@ class NewsCommand(commands.Cog):
 
                 if articles_to_send:
                     await safe_send(ctx, f"📢 설정 완료! 최신 뉴스 {len(articles_to_send)}개를 확인했습니다:")
-                    for article in articles_to_send[:3]:
+                    await safe_send(ctx, f"📋 미리보기로 최신 5개를 표시합니다:")
+                    for article in articles_to_send[-5:]:
                         embed = self.create_news_embed(article)
                         await safe_send(ctx, embed=embed)
                 else:
@@ -228,8 +229,8 @@ class NewsCommand(commands.Cog):
     async def safe_fetch_news(self, game_func: Callable, formatted_date: str, game_name: str):
         try:
             news_data = await game_func(formatted_date)
-            if news_data and news_data.get("content"):
-                return news_data["content"]
+            if news_data and isinstance(news_data, list):
+                return news_data
             return []
         except Exception as e:
             print(f"{game_name} 뉴스 크롤링 오류: {e}")
