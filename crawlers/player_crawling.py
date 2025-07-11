@@ -13,7 +13,21 @@ def search_valorant_players(player_name: str) -> list:
         player_name (str): 검색할 플레이어 이름
     """
     url = f'https://www.vlr.gg/search/?q={player_name}&type=players'
-    response = requests.get(url)
+
+    params = {
+        'q': player_name,
+        'type': 'players'
+    }
+
+    headers = {
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br, zstd',
+        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Whale/4.32.315.22 Safari/537.36',
+    }
+    
+
+    response = requests.get(url=url, params=params, headers=headers)
     if response.status_code == 200:
         soup = BeautifulSoup(response.text, 'html.parser')
         
@@ -64,8 +78,14 @@ async def fetch_valorant_player_info(player_name: str, real_name: str, player_li
         'player_link': player_link
     }
 
+    headers = {
+        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'accept-language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Whale/4.32.315.22 Safari/537.36',
+    }
+
     async with aiohttp.ClientSession() as session:
-        async with session.get(player_link) as response:
+        async with session.get(url=player_link, headers=headers) as response:
             if response.status == 200:
                 soup = BeautifulSoup(await response.text(), 'html.parser')
 
@@ -157,4 +177,5 @@ async def fetch_valorant_player_info(player_name: str, real_name: str, player_li
 
 
 if __name__ == "__main__":
+    print(search_valorant_players("mako"))
     asyncio.run(fetch_valorant_player_info("mako", "김명관", "https://www.vlr.gg/player/4462/mako"))
