@@ -172,18 +172,35 @@ async def load_cogs():
     """모든 cog를 로드합니다."""
     cogs_to_load = [
         'cogs.hello',
+        'cogs.help',  # 안전한 cog들을 먼저 로드
         'cogs.news',
-        'cogs.help',
-        'cogs.schedule',
-        'cogs.player'
+        'cogs.player',
+        'cogs.schedule'  # 이미지 처리가 있는 cog를 마지막에
     ]    
+    
+    successful_cogs = []
+    failed_cogs = []
     
     for cog in cogs_to_load:
         try:
+            print(f'🔄 {cog} 로드 시작...')
             await bot.load_extension(cog)
             print(f'✅ {cog} 로드 완료')
+            successful_cogs.append(cog)
         except Exception as e:
             print(f'❌ {cog} 로드 실패: {e}')
+            print(f'❌ 상세 오류: {type(e).__name__}: {e}')
+            failed_cogs.append(cog)
+            import traceback
+            traceback.print_exc()
+            
+    print(f"\n📊 Cog 로드 결과:")
+    print(f"✅ 성공: {len(successful_cogs)}개 - {', '.join(successful_cogs)}")
+    if failed_cogs:
+        print(f"❌ 실패: {len(failed_cogs)}개 - {', '.join(failed_cogs)}")
+        print(f"⚠️ 실패한 기능들은 사용할 수 없지만, 봇은 정상 작동합니다.")
+    else:
+        print(f"🎉 모든 Cog가 성공적으로 로드되었습니다!")
 
 async def shutdown(signal_received, loop):
     """종료 신호를 처리하는 함수"""
