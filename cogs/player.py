@@ -8,6 +8,20 @@ import aiohttp
 import asyncio
 from urllib.parse import urlparse
 
+# bot.py에서 safe_send 함수 import
+import sys
+sys.path.append('..')
+try:
+    from bot import safe_send
+except ImportError:
+    # Import 실패 시 로컬 구현
+    async def safe_send(ctx_or_channel, content=None, **kwargs):
+        try:
+            return await ctx_or_channel.send(content, **kwargs)
+        except Exception as e:
+            print(f"메시지 전송 실패: {e}")
+            return None
+
 GAME_NAME = {
     "롤": "leagueofLegends",
     "LOL": "leagueofLegends",
@@ -258,12 +272,12 @@ class PlayerCommand(commands.Cog):
     @commands.command(name='선수', help='선수 정보 확인 (ex) /선수 발로란트 k1ng')
     async def show_player_info(self, ctx: commands.Context, game_name: str, player_name: str):
         if game_name not in GAME_NAME:
-            await ctx.send(f"지원하지 않는 게임입니다. 지원 게임: {', '.join(GAME_NAME.keys())}")
+            await safe_send(ctx, f"지원하지 않는 게임입니다. 지원 게임: {', '.join(GAME_NAME.keys())}")
             return
         
         player_results = search_valorant_players(player_name)
         if not player_results:
-            await ctx.send("❌ 선수 검색 결과가 존재하지 않습니다!")
+            await safe_send(ctx, "❌ 선수 검색 결과가 존재하지 않습니다!")
             return
         
         embed = discord.Embed(
@@ -271,7 +285,7 @@ class PlayerCommand(commands.Cog):
             description="동명이인 또는 유사 닉네임이 여러 명 검색되었습니다. 아래에서 확인하세요."
         )
 
-        await ctx.send(embed=embed, view=PlayerView(player_results))
+        await safe_send(ctx, embed=embed, view=PlayerView(player_results))
 
 
 async def setup(bot: commands.Bot):
