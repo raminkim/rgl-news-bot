@@ -217,7 +217,7 @@ class NewsCommand(commands.Cog):
 
                 if articles_to_send:
                     await safe_send(ctx, f"📢 설정 완료! 최신 뉴스 {len(articles_to_send)}개를 확인했습니다:")
-                    await safe_send(ctx, f"📋 미리보기로 최신 5개를 표시합니다:")
+                    await safe_send(ctx, f"📋 미리보기로 최신 뉴스 {len(articles_to_send) if len(articles_to_send) < 5 else 5}개를 표시합니다:")
                     for article in articles_to_send[-5:]:
                         embed = self.create_news_embed(article)
                         await safe_send(ctx, embed=embed)
