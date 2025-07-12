@@ -59,8 +59,11 @@ class RateLimitHandler:
             print(f"📈 지수 백오프 대기: {wait_time:.1f}초 (재시도 {self.retry_count}/{self.max_retries})")
         
         print(f"⏳ {wait_time:.0f}초 대기 시작...")
+        start_time = asyncio.get_event_loop().time()
         await asyncio.sleep(wait_time)
-        print(f"✅ {wait_time:.0f}초 대기 완료, 재시도합니다")
+        end_time = asyncio.get_event_loop().time()
+        actual_wait = end_time - start_time
+        print(f"✅ {actual_wait:.1f}초 대기 완료 (예상: {wait_time:.0f}초), 재시도합니다")
         return True
     
     def reset(self):
@@ -140,6 +143,40 @@ async def on_ready():
     
     # 성공적 연결 시 Rate Limit 카운터 리셋
     rate_limit_handler.reset()
+    
+    # 뉴스 루프 시작 (봇 연결 완료 후)
+    try:
+        news_cog = bot.get_cog('NewsCommand')
+        if news_cog:
+            # 이미 실행 중인 루프가 있다면 중지
+            if news_cog.news_loop.is_running():
+                news_cog.news_loop.cancel()
+                print("🔄 기존 뉴스 루프 중지됨")
+                
+            # 새로운 루프 시작
+            news_cog.news_loop.start()
+            print("✅ 뉴스 자동 전송 루프 시작됨")
+        else:
+            print("⚠️ NewsCommand Cog를 찾을 수 없습니다")
+    except Exception as e:
+        print(f"⚠️ 뉴스 루프 시작 실패: {e}")
+        print("⚠️ 뉴스 자동 전송은 비활성화됩니다. 수동 명령어는 여전히 사용 가능합니다.")
+
+@bot.event
+async def on_disconnect():
+    """게이트웨이 연결 끊김 시 뉴스 루프를 일시 중단합니다."""
+    news_cog = bot.get_cog('NewsCommand')
+    if news_cog and news_cog.news_loop.is_running():
+        news_cog.news_loop.cancel()
+        print("🔌 연결 끊김 → 뉴스 루프 일시 중단")
+
+@bot.event
+async def on_resumed():
+    """세션 재개 시 뉴스 루프를 다시 시작합니다."""
+    news_cog = bot.get_cog('NewsCommand')
+    if news_cog and not news_cog.news_loop.is_running():
+        news_cog.news_loop.start()
+        print("🔄 세션 재개 → 뉴스 루프 재시작")
 
 # 오류 처리
 @bot.event
