@@ -1,5 +1,6 @@
 import discord
 import pytz
+import asyncio
 from typing import List, Dict, Any, Callable
 
 from discord.ext import commands, tasks
@@ -94,9 +95,13 @@ class NewsCommand(commands.Cog):
 
             channel = self.bot.get_channel(channel_id)
             if channel:
-                for article in articles_to_send:
+                for i, article in enumerate(articles_to_send):
                     embed = self.create_news_embed(article)
                     await safe_send(channel, embed=embed)
+                    
+                    # 마지막 뉴스가 아니면 5초 대기
+                    if i < len(articles_to_send) - 1:
+                        await asyncio.sleep(5)
 
         now_done = datetime.now(pytz.timezone("Asia/Seoul")).strftime("%Y-%m-%d %H:%M:%S")
         print(f"✅ [{now_done}] 뉴스 전송 완료")
@@ -132,10 +137,14 @@ class NewsCommand(commands.Cog):
             articles_to_send.sort(key=lambda x: x['createdAt'])
 
             await safe_send(ctx, f"📢 새로운 뉴스 {len(articles_to_send)}개를 발견했습니다!")
-            for article in articles_to_send[:10]:
+            for i, article in enumerate(articles_to_send[:10]):
                 try:
                     embed = self.create_news_embed(article)
                     await safe_send(ctx, embed=embed)
+                    
+                    # 마지막 뉴스가 아니면 5초 대기
+                    if i < min(len(articles_to_send), 10) - 1:
+                        await asyncio.sleep(5)
 
                 except Exception as e:
                     await safe_send(ctx, f"❌ 뉴스 전송 중 오류: {e}")
@@ -218,9 +227,14 @@ class NewsCommand(commands.Cog):
                 if articles_to_send:
                     await safe_send(ctx, f"📢 설정 완료! 최신 뉴스 {len(articles_to_send)}개를 확인했습니다:")
                     await safe_send(ctx, f"📋 미리보기로 최신 뉴스 {len(articles_to_send) if len(articles_to_send) < 5 else 5}개를 표시합니다:")
-                    for article in articles_to_send[-5:]:
+                    preview_articles = articles_to_send[-5:]
+                    for i, article in enumerate(preview_articles):
                         embed = self.create_news_embed(article)
                         await safe_send(ctx, embed=embed)
+                        
+                        # 마지막 뉴스가 아니면 5초 대기
+                        if i < len(preview_articles) - 1:
+                            await asyncio.sleep(5)
                 else:
                     await safe_send(ctx, "📰 현재 새로운 뉴스가 없습니다.")
             except Exception as e:
