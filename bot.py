@@ -27,8 +27,8 @@ class RateLimitHandler:
     def __init__(self):
         self.retry_count = 0
         self.base_delay = 1  # 기본 대기 시간 (초)
-        self.max_retries = 5  # 최대 재시도 횟수
-        self.max_delay = 300  # 최대 대기 시간 (5분)
+        self.max_retries = 3
+        self.max_delay = 60
     
     async def handle_rate_limit(self, retry_after: float = None) -> bool:
         """
@@ -43,12 +43,19 @@ class RateLimitHandler:
         
         if retry_after:
             # Discord가 명시한 대기 시간 준수
-            if retry_after > 3600:  # 1시간 초과 시 포기
+            if retry_after > 3600:  # 60분 초과 시 포기
                 print(f"🚨 심각한 Rate Limit: {retry_after}초 ({retry_after/60:.1f}분)")
-                print("🛑 봇을 종료합니다. 토큰 재생성을 고려해주세요.")
+                print("🛑 60분을 초과하므로 봇을 종료합니다. 토큰 재생성을 고려해주세요.")
                 return False
             
+            # 60분 이내면 Discord가 지정한 시간 그대로 대기
             wait_time = retry_after
+            if retry_after > 300:  # 5분 초과 시 추가 정보 제공
+                print(f"⚠️ 긴 Rate Limit: {retry_after}초 ({retry_after/60:.1f}분)")
+                print("📋 가능한 원인:")
+                print("   • Invalid Request Limit (Cloudflare 차단)")
+                print("   • 글로벌 Rate Limit 초과")
+                print("   • 토큰 남용 감지")
             print(f"⏰ Discord 지정 대기: {wait_time}초 ({wait_time/60:.1f}분)")
         else:
             # 지수 백오프 계산 (Discord 권장)
@@ -76,10 +83,20 @@ class RateLimitHandler:
         
         if isinstance(error, discord.HTTPException):
             if error.status == 429:  # 디스코드 레이트 리밋
-                retry_after = float(error.response.headers.get("Retry-After", 0))
+                # Discord 공식 정책: retry_after 필드 또는 Retry-After 헤더 사용
+                if hasattr(error, 'retry_after') and error.retry_after:
+                    retry_after = float(error.retry_after)
+                else:
+                    retry_after = float(error.response.headers.get("Retry-After", 0))
+                
+                # 글로벌 Rate Limit 확인
+                is_global = error.response.headers.get("X-RateLimit-Global") == "true"
+                scope = error.response.headers.get("X-RateLimit-Scope", "unknown")
+                
+                print(f"🔍 Rate Limit 정보: scope={scope}, global={is_global}, retry_after={retry_after}")
                 return True, retry_after
             elif error.status == 503:  # 서비스 불가
-                return True, 60
+                return True, 30
         
         # Cloudflare Rate Limit 감지
         error_str = str(error).lower()
@@ -87,7 +104,8 @@ class RateLimitHandler:
             "rate limit", "too many requests", "error 1015", 
             "cloudflare", "being rate limited"
         ]):
-            return True, 120
+            print("🚨 Cloudflare Rate Limit 감지 - Invalid Request Limit 가능성")
+            return True, 60
         
         return False, 0
 
@@ -117,12 +135,17 @@ async def safe_send(ctx_or_channel, content=None, **kwargs):
                     if should_continue:
                         continue
                 
-                # Rate Limit 처리 실패 시 콘솔에만 기록
+
                 logging.warning(f"메시지 전송 Rate Limit: {e}")
                 return None
             else:
                 # Rate Limit이 아닌 다른 에러
-                logging.error(f"메시지 전송 실패: {e}")
+                print(f"❌ 메시지 전송 실패: {type(e).__name__}: {e}")
+                if hasattr(ctx_or_channel, 'channel'):
+                    print(f"📍 채널: {ctx_or_channel.channel.name}")
+                elif hasattr(ctx_or_channel, 'name'):
+                    print(f"📍 채널: {ctx_or_channel.name}")
+                print(f"📝 전송 실패한 메시지: {str(content)[:100]}...")
                 return None
     
     return None
@@ -222,12 +245,20 @@ async def start_bot():
 
     print("🔑 토큰 확인 완료")
     
-    while True:
+    max_startup_attempts = 3  # 시작 시도 횟수 제한
+    attempt = 0
+    
+    while attempt < max_startup_attempts:
+        attempt += 1
         try:
-            print("🚀 Discord 서버 연결 시도 중...")
+            print(f"🚀 Discord 서버 연결 시도 중... ({attempt}/{max_startup_attempts})")
             await bot.start(token)
             break  # 성공 시 루프 종료
             
+        except discord.LoginFailure as e:
+            print("❌ 잘못된 토큰입니다. 봇을 종료합니다.")
+            print("💡 Discord Developer Portal에서 토큰을 확인해주세요.")
+            return
         except discord.HTTPException as e:
             if e.status == 429:
                 retry_after = float(e.response.headers.get("Retry-After", 0))
@@ -236,38 +267,40 @@ async def start_bot():
                 print(f"📊 상태 코드: {e.status}")
                 print(f"⏱️ 대기 시간: {retry_after}초 ({retry_after/60:.1f}분)")
                 
-                # 지수 백오프로 Rate Limit 처리
+                # Rate Limit 처리
                 should_continue = await rate_limit_handler.handle_rate_limit(retry_after)
                 if not should_continue:
                     print("🛑 Rate Limit 처리 실패. 봇을 종료합니다.")
                     print("💡 토큰 재생성 후 1-2시간 뒤 다시 시도해주세요.")
                     return
                 continue
+            elif e.status == 401:
+                print("❌ 인증 실패: 토큰이 유효하지 않습니다.")
+                print("💡 .env 파일의 DISCORD_BOT_TOKEN을 확인해주세요.")
+                return
+            elif e.status == 403:
+                print("❌ 권한 없음: 봇이 해당 서버에 접근할 권한이 없습니다.")
+                return
             else:
                 print(f"❌ Discord HTTP 에러: {e.status} - {e}")
-                should_continue = await rate_limit_handler.handle_rate_limit()
-                if not should_continue:
+                if attempt >= max_startup_attempts:
+                    print("🛑 최대 시도 횟수 초과. 봇을 종료합니다.")
                     return
+                await asyncio.sleep(5)  # 5초 대기 후 재시도
                 continue
                 
         except Exception as e:
             error_str = str(e)
             print(f"❌ 봇 시작 중 에러: {error_str}")
             
-            if "429" in error_str or "Too Many Requests" in error_str or "rate limit" in error_str.lower():
-                print("🔍 Rate Limit 에러로 감지됨")
-                # 문자열에서 Rate Limit 감지
-                should_continue = await rate_limit_handler.handle_rate_limit()
-                if not should_continue:
-                    print("🛑 Rate Limit 처리 실패. 봇을 종료합니다.")
-                    return
-                continue
-            else:
-                print("🔍 일반 에러로 판단, 재시도")
-                should_continue = await rate_limit_handler.handle_rate_limit()
-                if not should_continue:
-                    return
-                continue
+            # 네트워크 연결 문제 등 일반적인 에러 처리
+            if attempt >= max_startup_attempts:
+                print("🛑 최대 시도 횟수 초과. 봇을 종료합니다.")
+                return
+            
+            print(f"🔄 5초 후 재시도...")
+            await asyncio.sleep(5)
+            continue
 
 async def main():
     """메인 실행 함수"""
