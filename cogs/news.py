@@ -25,13 +25,9 @@ class NewsCommand(commands.Cog):
         self.channel_games = {}
 
     async def cog_load(self):
-        try:
-            if not self.news_loop.is_running():
-                self.news_loop.start()
-                print("✅ 뉴스 자동 전송 루프 시작됨")
-        except Exception as e:
-            print(f"⚠️ 뉴스 루프 시작 실패: {e}")
-            print("⚠️ 뉴스 자동 전송은 비활성화됩니다. 수동 명령어는 여전히 사용 가능합니다.")
+        # 뉴스 루프는 봇 연결 완료 후 on_ready에서 시작
+        print("📰 뉴스 시스템 로드 완료 (루프는 봇 연결 후 시작)")
+        pass
 
     async def cog_unload(self):
         if self.news_loop.is_running():
@@ -72,39 +68,47 @@ class NewsCommand(commands.Cog):
     
     @tasks.loop(seconds=1200)
     async def news_loop(self):
-        formatted_date = date.today().strftime('%Y-%m-%d')
-        
-        fetch_lol_articles = await self.safe_fetch_news(lol_news_articles, formatted_date, "롤")
-        fetch_valorant_articles = await self.safe_fetch_news(valorant_news_articles, formatted_date, "발로란트")
-        fetch_overwatch_articles = await self.safe_fetch_news(overwatch_news_articles, formatted_date, "오버워치")
-            
-        for channel_id, game in self.channel_games.items():
-            articles_to_send = []
-            
-            if "lol" in game:
-                articles_to_send.extend(fetch_lol_articles)
-            if "valorant" in game:
-                articles_to_send.extend(fetch_valorant_articles)
-            if "overwatch" in game:
-                articles_to_send.extend(fetch_overwatch_articles)
+        if not self.bot.is_ready():
+            return  # 게이트웨이 연결 전에는 전송하지 않음
 
-            if not articles_to_send:
-                continue
+        try:
+            formatted_date = date.today().strftime('%Y-%m-%d')
             
-            articles_to_send.sort(key=lambda x: x['createdAt'])
+            fetch_lol_articles = await self.safe_fetch_news(lol_news_articles, formatted_date, "롤")
+            fetch_valorant_articles = await self.safe_fetch_news(valorant_news_articles, formatted_date, "발로란트")
+            fetch_overwatch_articles = await self.safe_fetch_news(overwatch_news_articles, formatted_date, "오버워치")
+                
+            for channel_id, game in self.channel_games.items():
+                articles_to_send = []
+                
+                if "lol" in game:
+                    articles_to_send.extend(fetch_lol_articles)
+                if "valorant" in game:
+                    articles_to_send.extend(fetch_valorant_articles)
+                if "overwatch" in game:
+                    articles_to_send.extend(fetch_overwatch_articles)
 
-            channel = self.bot.get_channel(channel_id)
-            if channel:
-                for i, article in enumerate(articles_to_send):
-                    embed = self.create_news_embed(article)
-                    await safe_send(channel, embed=embed)
-                    
-                    # 마지막 뉴스가 아니면 5초 대기
-                    if i < len(articles_to_send) - 1:
-                        await asyncio.sleep(5)
+                if not articles_to_send:
+                    continue
+                
+                articles_to_send.sort(key=lambda x: x['createdAt'])
 
-        now_done = datetime.now(pytz.timezone("Asia/Seoul")).strftime("%Y-%m-%d %H:%M:%S")
-        print(f"✅ [{now_done}] 뉴스 전송 완료")
+                channel = self.bot.get_channel(channel_id)
+                if channel:
+                    for i, article in enumerate(articles_to_send):
+                        embed = self.create_news_embed(article)
+                        await safe_send(channel, embed=embed)
+                        
+                        # 마지막 뉴스가 아니면 5초 대기
+                        if i < len(articles_to_send) - 1:
+                            await asyncio.sleep(5)
+
+            now_done = datetime.now(pytz.timezone("Asia/Seoul")).strftime("%Y-%m-%d %H:%M:%S")
+            print(f"✅ [{now_done}] 뉴스 전송 완료")
+            
+        except Exception as e:
+            now_error = datetime.now(pytz.timezone("Asia/Seoul")).strftime("%Y-%m-%d %H:%M:%S")
+            print(f"❌ [{now_error}] 뉴스 루프 실행 중 오류: {e}")
 
     @commands.command(name='뉴스확인', help='현재 채널에 설정된 게임의 최신 뉴스를 가져옵니다.')
     async def check_news_now(self, ctx: commands.Context):
