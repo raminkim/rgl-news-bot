@@ -244,7 +244,6 @@ class NewsCommand(commands.Cog):
                 description=f"**채널:** {ctx.channel.name}\n**게임:** {', '.join(selected_names)}\n\n🔄 20분마다 자동으로 새로운 뉴스를 확인합니다.",
                 color=0x00ff00
             )
-            embed.add_field(name="💡 팁", value="🔄 20분마다 자동으로 새로운 뉴스가 전송됩니다.", inline=False)
             
             await safe_send(ctx, embed=embed)
 
