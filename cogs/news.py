@@ -7,6 +7,7 @@ from discord.ext import commands, tasks
 from datetime import date, datetime
 
 from crawlers.news_crawling import lol_news_articles, valorant_news_articles, overwatch_news_articles
+from repository.db import load_all_channel_state, load_channel_state, save_channel_state
 
 async def safe_send(ctx_or_channel, content=None, **kwargs):
     """Rate Limit 안전한 메시지 전송"""
@@ -76,15 +77,15 @@ class NewsCommand(commands.Cog):
             fetch_lol_articles = await self.safe_fetch_news(lol_news_articles, formatted_date, "롤")
             fetch_valorant_articles = await self.safe_fetch_news(valorant_news_articles, formatted_date, "발로란트")
             fetch_overwatch_articles = await self.safe_fetch_news(overwatch_news_articles, formatted_date, "오버워치")
-                
-            for channel_id, game in self.channel_games.items():
+            
+            for channel_id, game_states in (await load_all_channel_state()).items():
                 articles_to_send = []
                 
-                if "lol" in game:
+                if "lol" in game_states:
                     articles_to_send.extend(fetch_lol_articles)
-                if "valorant" in game:
+                if "valorant" in game_states:
                     articles_to_send.extend(fetch_valorant_articles)
-                if "overwatch" in game:
+                if "overwatch" in game_states:
                     articles_to_send.extend(fetch_overwatch_articles)
 
                 if not articles_to_send:
@@ -111,16 +112,14 @@ class NewsCommand(commands.Cog):
 
     @commands.command(name='뉴스확인', help='현재 채널에 설정된 게임의 최신 뉴스를 가져옵니다.')
     async def check_news_now(self, ctx: commands.Context):
-        channel_games = self.channel_games.get(ctx.channel.id, [])
+        game_names = {"lol": "리그오브레전드", "valorant": "발로란트", "overwatch": "오버워치"}
+        channel_games = [game_names[game] for game, enabled in (await load_channel_state(ctx.channel.id)).items() if enabled]
 
         if not channel_games:
             await safe_send(ctx, "❌ 이 채널은 뉴스 설정이 되어 있지 않습니다.\n`/뉴스채널설정 롤 발로란트 오버워치`로 설정해주세요!")
             return
-        
-        game_names = {"lol": "리그오브레전드", "valorant": "발로란트", "overwatch": "오버워치"}
-        selected_names = [game_names[game] for game in channel_games]
 
-        await safe_send(ctx, f"🔍 현재 채널에 설정된 뉴스 채널: {ctx.channel.name} -> {', '.join(selected_names)}")
+        await safe_send(ctx, f"🔍 현재 채널에 설정된 뉴스 채널: {ctx.channel.name} -> {', '.join(channel_games)}")
 
         try:
             formatted_date = date.today().strftime('%Y-%m-%d')
@@ -181,12 +180,13 @@ class NewsCommand(commands.Cog):
         game_names = {"lol": "리그오브레전드", "valorant": "발로란트", "overwatch": "오버워치"}
 
         if not games:
-            current_games = self.channel_games.get(ctx.channel.id, [])
+            loaded_games = await load_channel_state(ctx.channel.id)
+            
+            current_games = [game_names[game] for game, enabled in loaded_games.items() if enabled]
             if current_games:
-                current_names = [game_names[game] for game in current_games]
-                await safe_send(ctx, f"현재 설정된 뉴스 채널: {ctx.channel.name} -> {', '.join(current_names)}")
+                await safe_send(ctx, f"현재 '{ctx.channel.name}' 채널에 설정된 뉴스 설정값: -> {', '.join(current_games)}")
             else:
-                await safe_send(ctx, "현재 설정된 뉴스 채널이 없습니다.")
+                await safe_send(ctx, "현재 채널은 뉴스 설정이 되어 있지 않습니다.\n`/뉴스채널설정 롤 발로란트 오버워치`과 같은 명령어로 설정해주세요!")
             return
 
         selected_games = []
@@ -201,8 +201,18 @@ class NewsCommand(commands.Cog):
             else:
                 selected_games.append(mapped)
 
-        selected_games = list(set(selected_games))
-        self.channel_games[ctx.channel.id] = selected_games
+        # 채널 설정 저장
+        channel_state = {game: True for game in list(set(selected_games))}
+        for game in ["lol", "valorant", "overwatch"]:
+            if game not in channel_state:
+                channel_state[game] = False
+                
+        result: bool = await save_channel_state(ctx.channel.id, channel_state)
+
+        # 채널 설정 저장 실패 시 오류 메시지 전송
+        if not result:
+            await safe_send(ctx, "❌ 뉴스 설정 저장 중 오류가 발생했습니다.\n봇 관리자에게 문의해주세요.")
+            return
 
         if selected_games:
             selected_names = [game_names[game] for game in selected_games]

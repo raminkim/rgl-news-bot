@@ -50,6 +50,7 @@ class ScheduleCommand(commands.Cog):
             now_ym = now_dt.strftime("%Y-%m")
 
             print(f"롤리그 검색 시작: {league_key}")
+            await safe_send(ctx, f"🔍 롤리그 검색 시작: {league_key}... 잠시만 기다려주세요.")
 
             # 월 목록 조회
             year_str = now_dt.strftime("%Y")
