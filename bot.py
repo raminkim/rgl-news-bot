@@ -313,14 +313,11 @@ async def main():
     # 봇의 이벤트 루프 가져오기
     loop = asyncio.get_event_loop()
     
-    # Windows에서는 signal handler 사용 불가, try-except로 처리
     try:
-        # Render가 보내는 SIGTERM 신호를 받았을 때 shutdown 함수를 실행하도록 등록
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(shutdown(s, loop)))
         print("✅ Signal handlers 등록 완료")
     except NotImplementedError:
-        # Windows에서는 signal handler가 지원되지 않음
         print("⚠️ Windows 환경: Signal handlers 건너뜀")
     
     # Cog 로드
@@ -332,7 +329,6 @@ async def main():
     await start_bot()
 
 if __name__ == '__main__':
-    # 서버 핑용 웹페이지(keep-alive) 기동
     keep_alive()
 
     asyncio.run(main())
