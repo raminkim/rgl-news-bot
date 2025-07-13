@@ -7,7 +7,7 @@ from discord.ext import commands, tasks
 from datetime import date, datetime
 
 from crawlers.news_crawling import lol_news_articles, valorant_news_articles, overwatch_news_articles
-from repository.db import load_all_channel_state, load_channel_state, save_channel_state
+from db import load_all_channel_state, load_channel_state, save_channel_state, delete_channel_state
 
 async def safe_send(ctx_or_channel, content=None, **kwargs):
     """Rate Limit 안전한 메시지 전송"""
@@ -110,7 +110,7 @@ class NewsCommand(commands.Cog):
             now_error = datetime.now(pytz.timezone("Asia/Seoul")).strftime("%Y-%m-%d %H:%M:%S")
             print(f"❌ [{now_error}] 뉴스 루프 실행 중 오류: {e}")
 
-    @commands.command(name='뉴스확인', help='현재 채널에 설정된 게임의 최신 뉴스를 가져옵니다.')
+    @commands.command(name='뉴스확인', help='최근 뉴스를 조회합니다.')
     async def check_news_now(self, ctx: commands.Context):
         game_names = {"lol": "리그오브레전드", "valorant": "발로란트", "overwatch": "오버워치"}
         channel_games = [game_names[game] for game, enabled in (await load_channel_state(ctx.channel.id)).items() if enabled]
@@ -159,7 +159,18 @@ class NewsCommand(commands.Cog):
             await safe_send(ctx, f"❌ 뉴스 확인 중 오류가 발생했습니다: {e}")
             print(f"뉴스확인 명령어 오류: {e}")
 
-    @commands.command(name='뉴스채널설정', help='채널별 게임 뉴스 설정. 매개변수 없이 입력하면 현재 설정 확인, 게임명 입력하면 설정 변경 (예: 롤 발로란트 오버워치)')
+    @commands.command(
+        name='뉴스채널설정',
+        help=(
+            '채널별 게임 뉴스 설정\n\n'
+            '**게임별 설정:** `/뉴스채널설정 롤 발로란트 오버워치`\n'
+            '**전체 설정:** `/뉴스채널설정 모든게임` 또는 `/뉴스채널설정 모두`\n'
+            '**설정 해제:** `/뉴스채널설정 해제` 또는 `/뉴스채널설정 삭제`\n'
+            '**설정 확인:** `/뉴스채널설정` (인자 없이)\n\n'
+            '💡 **전체 설정 키워드:** 모든게임, 모두, 전체, ON, on\n'
+            '💡 **해제 키워드:** 해제, 삭제, off, OFF'
+        )
+    )
     @commands.has_guild_permissions(manage_channels=True)
     async def set_news_channel(self, ctx: commands.Context, *games: str):
         # 한국어 게임명 매칭
@@ -174,7 +185,10 @@ class NewsCommand(commands.Cog):
             "오버": "overwatch",
             "overwatch": "overwatch",
             "모든게임": ["lol", "valorant", "overwatch"],
-            "전체": ["lol", "valorant", "overwatch"]
+            "모두": ["lol", "valorant", "overwatch"],
+            "전체": ["lol", "valorant", "overwatch"],
+            "ON": ["lol", "valorant", "overwatch"],
+            "on": ["lol", "valorant", "overwatch"],
         }
 
         game_names = {"lol": "리그오브레전드", "valorant": "발로란트", "overwatch": "오버워치"}
@@ -188,12 +202,20 @@ class NewsCommand(commands.Cog):
             else:
                 await safe_send(ctx, "현재 채널은 뉴스 설정이 되어 있지 않습니다.\n`/뉴스채널설정 롤 발로란트 오버워치`과 같은 명령어로 설정해주세요!")
             return
+        
+        if len(games) == 1 and games[0] in ("해제", "삭제", "off", "OFF"):
+            deleted = await delete_channel_state(ctx.channel.id)
+            if deleted:
+                await safe_send(ctx, f"✅ '{ctx.channel.name}' 채널의 뉴스 알림 설정이 해제되었습니다.")
+            else:
+                await safe_send(ctx, f"ℹ️ '{ctx.channel.name}' 채널은 이미 뉴스 알림 설정이 되어 있지 않습니다.")
+            return
 
         selected_games = []
         for game in games:
             mapped = game_mapping.get(game.lower())
             if mapped is None:
-                await safe_send(ctx, f"❌ '{game}'는 지원하지 않는 게임명입니다.\n💡 **사용 가능한 게임:** 롤, 발로란트, 오버워치, 모든게임")
+                await safe_send(ctx, f"❌ '{game}'는 지원하지 않는 게임명입니다.\n💡 **사용 가능한 게임:** 롤, 발로란트, 오버워치\n💡 **전체 설정:** 모든게임, 모두, 전체, ON, on")
                 return
             
             if isinstance(mapped, list):
@@ -222,36 +244,9 @@ class NewsCommand(commands.Cog):
                 description=f"**채널:** {ctx.channel.name}\n**게임:** {', '.join(selected_names)}\n\n🔄 20분마다 자동으로 새로운 뉴스를 확인합니다.",
                 color=0x00ff00
             )
-            embed.add_field(name="💡 팁", value="언제든지 `/뉴스확인` 명령어로 수동 확인이 가능합니다!", inline=False)
+            embed.add_field(name="💡 팁", value="🔄 20분마다 자동으로 새로운 뉴스가 전송됩니다.", inline=False)
             
             await safe_send(ctx, embed=embed)
-
-            try:
-                formatted_date = date.today().strftime('%Y-%m-%d')
-                articles_to_send = []
-
-                if "lol" in selected_games:
-                    articles_to_send.extend(await self.safe_fetch_news(lol_news_articles, formatted_date, "롤"))
-                if "valorant" in selected_games:
-                    articles_to_send.extend(await self.safe_fetch_news(valorant_news_articles, formatted_date, "발로란트"))
-                if "overwatch" in selected_games:
-                    articles_to_send.extend(await self.safe_fetch_news(overwatch_news_articles, formatted_date, "오버워치"))
-
-                if articles_to_send:
-                    await safe_send(ctx, f"📢 설정 완료! 최신 뉴스 {len(articles_to_send)}개를 확인했습니다:")
-                    await safe_send(ctx, f"📋 미리보기로 최신 뉴스 {len(articles_to_send) if len(articles_to_send) < 5 else 5}개를 표시합니다:")
-                    preview_articles = articles_to_send[-5:]
-                    for i, article in enumerate(preview_articles):
-                        embed = self.create_news_embed(article)
-                        await safe_send(ctx, embed=embed)
-                        
-                        # 마지막 뉴스가 아니면 5초 대기
-                        if i < len(preview_articles) - 1:
-                            await asyncio.sleep(5)
-                else:
-                    await safe_send(ctx, "📰 현재 새로운 뉴스가 없습니다.")
-            except Exception as e:
-                print(f"초기 뉴스 확인 오류: {e}")
 
     async def safe_fetch_news(self, game_func: Callable, formatted_date: str, game_name: str):
         try:
