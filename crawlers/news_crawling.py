@@ -1,12 +1,10 @@
 import aiohttp
 import asyncio
 import heapq
-import os
-import asyncpg
 
 from typing import List, Dict, Any
 from datetime import date
-from repository.db import save_state, load_state
+from db import save_state, load_state
 
 
 async def update_state(game: str, articles: List[Dict[str, Any]]) -> None:

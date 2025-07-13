@@ -202,8 +202,6 @@ async def on_command_error(ctx, error):
     else:
         await safe_send(ctx, f"❌ 명령어 실행 중 오류가 발생했습니다.")
         print(f"기타 오류 상세: {error}")
-        
-    # 전송 실패 시 콘솔 로그만 기록 (safe_send에서 이미 처리)
 
 async def load_cogs():
     """모든 cog를 로드합니다."""
