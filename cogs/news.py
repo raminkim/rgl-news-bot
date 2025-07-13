@@ -7,7 +7,7 @@ from discord.ext import commands, tasks
 from datetime import date, datetime
 
 from crawlers.news_crawling import lol_news_articles, valorant_news_articles, overwatch_news_articles
-from repository.db import load_all_channel_state, load_channel_state, save_channel_state
+from repository.db import load_all_channel_state, load_channel_state, save_channel_state, delete_channel_state
 
 async def safe_send(ctx_or_channel, content=None, **kwargs):
     """Rate Limit 안전한 메시지 전송"""
@@ -159,7 +159,14 @@ class NewsCommand(commands.Cog):
             await safe_send(ctx, f"❌ 뉴스 확인 중 오류가 발생했습니다: {e}")
             print(f"뉴스확인 명령어 오류: {e}")
 
-    @commands.command(name='뉴스채널설정', help='채널별 게임 뉴스 설정. 매개변수 없이 입력하면 현재 설정 확인, 게임명 입력하면 설정 변경 (예: 롤 발로란트 오버워치)')
+    @commands.command(
+        name='뉴스채널설정',
+        help=(
+            '채널별 게임 뉴스 설정\n'
+            '"해제"/"삭제"/"off" 입력 시 설정 해제 (예: /뉴스채널설정 해제)\n'
+            '게임명 입력 시 설정/변경 (예: /뉴스채널설정 롤 발로란트 오버워치)'
+        )
+    )
     @commands.has_guild_permissions(manage_channels=True)
     async def set_news_channel(self, ctx: commands.Context, *games: str):
         # 한국어 게임명 매칭
@@ -187,6 +194,11 @@ class NewsCommand(commands.Cog):
                 await safe_send(ctx, f"현재 '{ctx.channel.name}' 채널에 설정된 뉴스 설정값: -> {', '.join(current_games)}")
             else:
                 await safe_send(ctx, "현재 채널은 뉴스 설정이 되어 있지 않습니다.\n`/뉴스채널설정 롤 발로란트 오버워치`과 같은 명령어로 설정해주세요!")
+            return
+        
+        if len(games) == 1 and games[0] in ("해제", "삭제", "off", "OFF"):
+            await delete_channel_state(ctx.channel.id)
+            await safe_send(ctx, f"✅ '{ctx.channel.name}' 채널의 뉴스 알림 설정이 해제되었습니다.")
             return
 
         selected_games = []
