@@ -26,13 +26,14 @@ LEAGUE_TYPE = {
     "MSI": "msi",
     "WORLDS": "wrl",
     "LJL": "ljl",
+    "EWC": "ewc_lol"
 }
 
 class ScheduleCommand(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
     
-    @commands.command(name='롤리그', help='LoL 경기 일정 확인 (곧 시작할 4경기). 예) /롤리그 LCK')
+    @commands.command(name='롤리그', help='LoL 경기 일정 확인 (곧 시작할 4경기). 예) /롤리그 LCK \n\n 지원 리그: LCK, LPL, LEC, LCS, MSI, WORLDS, LJL, EWC')
     @commands.cooldown(1, 10, commands.BucketType.user)
     async def show_schedule(self, ctx: commands.Context, league_str: str):
         """다가오는 4경기 일정을 임베드로 표시합니다."""
