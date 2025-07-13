@@ -17,7 +17,7 @@ async def connect_db():
     try:
         pool = await asyncpg.create_pool(
             host=os.getenv("DB_HOST"),
-            port=5432,
+            port=int(os.getenv("DB_PORT")),
             database=os.getenv("DB_NAME"),
             user=os.getenv("DB_USER"),
             password=os.getenv("DB_PASSWORD"),
@@ -25,12 +25,11 @@ async def connect_db():
             min_size=1,
             max_size=5,
         )
+        print("✅ DB 풀 생성 완료")
     except Exception as e:
-        # 로그 남기고 애플리케이션 종료(또는 재시도 로직)
         print(f"❌ DB 풀 생성 실패: {e}")
-        raise   # 초기화 실패는 치명적이므로 그대로 종료
+        raise 
 
-# 커넥션 풀 존재 여부를 확인하고, 없으면 초기화한다.
 async def ensure_pool():
     """풀(pool)이 없으면 connect_db()를 호출해 초기화한다."""
     global pool
