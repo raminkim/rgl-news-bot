@@ -1,88 +1,50 @@
 import aiohttp
+import orjson
 import asyncio
 import heapq
-import os
-import asyncpg
 
+from pathlib import Path
 from typing import List, Dict, Any
 from datetime import date
 
-SQL_UPDATE_STATE = "UPDATE news_state SET last_processed_at = $1 WHERE game = $2"
-SQL_SELECT_STATE = "SELECT game, last_processed_at FROM news_state"
+STATE_FILE = Path("news_state.json")
 
-pool = None
-
-async def connect_db():
-    global pool
-    try:
-        pool = await asyncpg.create_pool(
-            host=os.getenv("DB_HOST"),
-            port=5432,
-            database=os.getenv("DB_NAME"),
-            user=os.getenv("DB_USER"),
-            password=os.getenv("DB_PASSWORD"),
-            ssl="require",
-            min_size=1,
-            max_size=5,
-        )
-    except Exception as e:
-        # 로그 남기고 애플리케이션 종료(또는 재시도 로직)
-        print(f"❌ DB 풀 생성 실패: {e}")
-        raise   # 초기화 실패는 치명적이므로 그대로 종료
-
-# 커넥션 풀 존재 여부를 확인하고, 없으면 초기화한다.
-async def ensure_pool():
-    """풀(pool)이 없으면 connect_db()를 호출해 초기화한다."""
-    global pool
-    if pool is None:
-        await connect_db()
-
-
-async def save_state(game: str, last_at: int) -> None:
+def save_state(game: str, last_at: int):
     """
-    데이터베이스 테이블에 game별 lastProcessedAt을 기록한다.
+    'news_state.json'에 lastProcessedAt을 기록한다.
 
     Args:
         game (str): lastProcessedAt을 기록할 key 값. (롤/발로란트/오버워치)
         last_at (int): 알림으로 남긴 마지막 기사의 createdAt 값.
     """
-    await ensure_pool()
-    try:
-        async with pool.acquire() as conn:
-            await conn.execute(SQL_UPDATE_STATE, last_at, game)
-    except asyncpg.PostgresError as e:
-        print(f"❌ save_state 오류: {e}")
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    state = load_state()
+    state[game] = {"lastProcessedAt": last_at } # 개임별로 마지막으로 처리한 시각
+    STATE_FILE.write_bytes(orjson.dumps(state, option = orjson.OPT_INDENT_2))
 
-async def load_state() -> dict[str, int]:
+
+def load_state() -> dict:
     """
-    데이터베이스 테이블에서 lastProcessedAt을 가져온다.
+    'news_state.json'에서 lastProcessedAt을 가져온다.
 
     Returns:
         dict: lastProcessedAt이 key 값으로 담긴 dict를 로드한 값.
     """
-    await ensure_pool()
-    try:
-        async with pool.acquire() as conn:
-            rows = await conn.fetch(SQL_SELECT_STATE)
-            return {row["game"]: row["last_processed_at"] for row in rows}
-    except asyncpg.PostgresError as e:
-        print(f"❌ load_state 오류: {e}")
-        return {}          # 안전한 기본값
+    if not STATE_FILE.exists():
+        return {}
+    return orjson.loads(STATE_FILE.read_bytes())
 
 
-async def update_state(game: str, articles: List[Dict[str, Any]]) -> None:
+def update_state(game: str, articles: List[Dict[str, Any]]):
     """
-    데이터베이스 테이블에 game별 lastProcessedAt을 최신화한다.
+    'news_state.json'에 lastProcessedAt을 최신화한다.
 
     Args:
         game (str): lastProcessedAt을 기록할 key 값. (롤/발로란트/오버워치)
         articles (List[Dict]): 마지막 처리 시각 이후에 생성된 기사 목록
     """
-    if not articles:
-        return
-    
     max_at = max([article.get('createdAt', 0) for article in articles])
-    await save_state(game, max_at)
+    save_state(game, max_at)
 
 
 async def lol_news_articles(formatted_date: str) -> List[Dict[str, Any]]:
@@ -114,8 +76,7 @@ async def lol_news_articles(formatted_date: str) -> List[Dict[str, Any]]:
                 content = data.get("content", [])
 
         # 이전에 가져왔던 롤 이스포츠 기사 중 마지막으로 처리한 기사의 시각을 불러옴.
-        state = await load_state()
-        lol_last_at = state.get("lol", 0)
+        lol_last_at = load_state().get("lol", {}).get('lastProcessedAt', 0)
 
         # createdAt이 lol의 lastProcessedAt보다 큰(신규) 기사만 반환
         lol_new_articles = sorted(
@@ -125,7 +86,7 @@ async def lol_news_articles(formatted_date: str) -> List[Dict[str, Any]]:
 
         # 신규 기사가 있을 때만 상태 갱신
         if lol_new_articles:
-            await update_state("lol", lol_new_articles)
+            update_state("lol", lol_new_articles)
         
         return lol_new_articles
 
@@ -162,8 +123,8 @@ async def valorant_news_articles(formatted_date: str) -> List[Dict[str, Any]]:
                 data = await response.json()
                 content = data.get("content", [])
 
-        state = await load_state()
-        valorant_last_at = state.get("valorant", 0)
+        # news_state.json에서 발로란트의 마지막 처리 시각을 불러옴
+        valorant_last_at = load_state().get("valorant", {}).get('lastProcessedAt', 0)
 
         # lastProcessedAt 이후에 생성된 신규 기사만 정렬하여 반환
         valorant_new_articles = sorted(
@@ -171,9 +132,9 @@ async def valorant_news_articles(formatted_date: str) -> List[Dict[str, Any]]:
             key=lambda x: x['createdAt']
         )
 
-        # 신규 기사가 있을 때만 상태 DB 갱신
+        # 신규 기사가 있을 때만 상태 파일 갱신
         if valorant_new_articles:
-            await update_state("valorant", valorant_new_articles)
+            update_state("valorant", valorant_new_articles)
 
         return valorant_new_articles
 
@@ -210,8 +171,8 @@ async def overwatch_news_articles(formatted_date: str) -> List[Dict[str, Any]]:
                 data = await response.json()
                 content = data.get("content", [])
 
-        state = await load_state()
-        overwatch_last_at = state.get("overwatch", 0)
+        # news_state.json에서 오버워치의 마지막 처리 시각을 불러옴
+        overwatch_last_at = load_state().get("overwatch", {}).get('lastProcessedAt', 0)
 
         # lastProcessedAt 이후에 생성된 신규 기사만 정렬하여 반환
         overwatch_new_articles = sorted(
@@ -219,9 +180,9 @@ async def overwatch_news_articles(formatted_date: str) -> List[Dict[str, Any]]:
             key=lambda x: x['createdAt']
         )
 
-        # 신규 기사가 있을 때만 상태 DB 갱신
+        # 신규 기사가 있을 때만 상태 파일 갱신
         if overwatch_new_articles:
-            await update_state("overwatch", overwatch_new_articles)
+            update_state("overwatch", overwatch_new_articles)
 
         return overwatch_new_articles
 
@@ -258,3 +219,8 @@ async def fetch_news_articles() -> List[Dict[str, Any]]:
     ))
 
     return all_new_articles
+
+
+if __name__ == '__main__':
+    articles = asyncio.run(fetch_news_articles())
+    print(f"신규 기사 {len(articles)}건:", articles)

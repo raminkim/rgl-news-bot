@@ -141,7 +141,7 @@ class NewsCommand(commands.Cog):
             articles_to_send.sort(key=lambda x: x['createdAt'])
 
             await safe_send(ctx, f"📢 새로운 뉴스 {len(articles_to_send)}개를 발견했습니다!")
-            for i, article in enumerate(articles_to_send[:10]):
+            for i, article in enumerate(articles_to_send[-10:]):
                 try:
                     embed = self.create_news_embed(article)
                     await safe_send(ctx, embed=embed)
