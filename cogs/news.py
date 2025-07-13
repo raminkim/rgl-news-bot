@@ -69,8 +69,7 @@ class NewsCommand(commands.Cog):
     @tasks.loop(seconds=1200)
     async def news_loop(self):
         if not self.bot.is_ready():
-            return  # 게이트웨이 연결 전에는 전송하지 않음
-
+            return
         try:
             formatted_date = date.today().strftime('%Y-%m-%d')
             
