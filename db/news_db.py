@@ -35,4 +35,17 @@ async def load_state() -> dict[str, int]:
             return {row["game"]: row["last_processed_at"] for row in rows}
     except asyncpg.PostgresError as e:
         print(f"❌ load_state 오류: {e}")
-        return {} 
+        return {}
+
+async def update_state(game: str, articles: list[dict]) -> None:
+    """
+    데이터베이스 테이블에 game별 lastProcessedAt을 최신화한다.
+
+    Args:
+        game (str): lastProcessedAt을 기록할 key 값. (롤/발로란트/오버워치)
+        articles (List[Dict]): 마지막 처리 시각 이후에 생성된 기사 목록
+    """
+    if not articles:
+        return
+    max_at = max([article.get('createdAt', 0) for article in articles])
+    await save_state(game, max_at) 
