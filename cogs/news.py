@@ -4,10 +4,10 @@ import asyncio
 from typing import List, Dict, Any, Callable
 
 from discord.ext import commands, tasks
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from crawlers.news_crawling import lol_news_articles, valorant_news_articles, overwatch_news_articles
-from db import load_all_channel_state, load_channel_state, save_channel_state, delete_channel_state
+from db import load_all_channel_state, load_channel_state, save_channel_state, delete_channel_state, load_state, update_state
 
 async def safe_send(ctx_or_channel, content=None, **kwargs):
     """Rate Limit 안전한 메시지 전송"""
@@ -19,7 +19,93 @@ async def safe_send(ctx_or_channel, content=None, **kwargs):
     except Exception as e:
         print(f"메시지 전송 실패: {e}")
         return None
+    
 
+class NewsView(discord.ui.View):
+    def __init__(self, info_embed, articles_to_send: List[Dict[str, Any]], page: int = 0, per_page: int = 4):
+        super().__init__(timeout=300)
+        self.info_embed = info_embed
+        self.articles_to_send = articles_to_send
+        self.page = page
+        self.per_page = per_page
+        self.total_pages = (len(articles_to_send) + per_page - 1) // per_page
+
+        # 페이지네이션 버튼만 추가 (이전, 페이지, 다음 순서)
+        self.prev_btn = self.PrevPageButton(self)
+        self.page_info_btn = self.PageInfoButton(self)
+        self.next_btn = self.NextPageButton(self)
+        self.add_item(self.prev_btn)
+        self.add_item(self.page_info_btn)
+        self.add_item(self.next_btn)
+
+    def get_page_articles(self):
+        start = self.page * self.per_page
+        end = start + self.per_page
+        return self.articles_to_send[start:end]
+
+    def get_embeds(self):
+        embeds = [self.info_embed]
+        for article in self.get_page_articles():
+            embed = discord.Embed(
+                title=article.get('title'),
+                url=article.get('linkUrl'),
+                color=0x1E90FF
+            )
+            if article.get('thumbnail'):
+                embed.set_thumbnail(url=article['thumbnail'])
+            ts = article.get('createdAt')
+            if ts:
+                dt = datetime.fromtimestamp(ts / 1000)
+                # 한국식 시간 포맷
+                kst = pytz.timezone("Asia/Seoul")
+                dt_kst = dt.astimezone(kst)
+                hour = dt_kst.hour
+                minute = dt_kst.minute
+                ampm = "오전" if hour < 12 else "오후"
+                hour12 = hour if 1 <= hour <= 12 else (hour - 12 if hour > 12 else 12)
+                formatted = f"{dt_kst.strftime('%Y-%m-%d')} {ampm} {hour12}:{minute:02d}"
+            else:
+                formatted = "-"
+            embed.add_field(
+                name="⏰ 발행시간",
+                value=formatted,
+                inline=False
+            )
+            embeds.append(embed)
+        return embeds
+
+    class PrevPageButton(discord.ui.Button):
+        def __init__(self, view):
+            super().__init__(label="⬅️ 이전", style=discord.ButtonStyle.secondary, disabled=view.page == 0)
+            self.view_ref = view
+        async def callback(self, interaction: discord.Interaction):
+            if self.view_ref.page > 0:
+                self.view_ref.page -= 1
+                await self.view_ref.update_message(interaction)
+
+    class NextPageButton(discord.ui.Button):
+        def __init__(self, view):
+            super().__init__(label="다음 ➡️", style=discord.ButtonStyle.secondary, disabled=view.page == view.total_pages - 1)
+            self.view_ref = view
+        async def callback(self, interaction: discord.Interaction):
+            if self.view_ref.page < self.view_ref.total_pages - 1:
+                self.view_ref.page += 1
+                await self.view_ref.update_message(interaction)
+
+    class PageInfoButton(discord.ui.Button):
+        def __init__(self, view):
+            super().__init__(
+                label=f"{view.page+1} / {view.total_pages}",
+                style=discord.ButtonStyle.secondary,
+                disabled=True
+            )
+
+    async def update_message(self, interaction: discord.Interaction):
+        self.prev_btn.disabled = self.page == 0
+        self.next_btn.disabled = self.page == self.total_pages - 1
+        self.page_info_btn.label = f"{self.page+1} / {self.total_pages}"
+        await interaction.response.edit_message(embeds=self.get_embeds(), view=self)
+            
 class NewsCommand(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -46,12 +132,6 @@ class NewsCommand(commands.Cog):
 
         if article['thumbnail']:
             embed.set_thumbnail(url=article['thumbnail'])
-        
-        embed.add_field(
-            name="🏆 순위", 
-            value=f"#{article['rank']}", 
-            inline=True
-        )
 
         ts_seconds = article['createdAt'] / 1000
         kst = pytz.timezone("Asia/Seoul")
@@ -73,19 +153,30 @@ class NewsCommand(commands.Cog):
             return
         try:
             formatted_date = date.today().strftime('%Y-%m-%d')
+
+            state = await load_state()
+            lol_last = state.get("lol", 0)
+            valorant_last = state.get("valorant", 0)
+            overwatch_last = state.get("overwatch", 0)
+
+            # 1. 각 게임별로 lastProcessedAt 이후의 기사만 추출
+            fetch_lol_articles = [article for article in await self.safe_fetch_news(lol_news_articles, formatted_date, "롤") if article["createdAt"] > lol_last]
+            fetch_valorant_articles = [article for article in await self.safe_fetch_news(valorant_news_articles, formatted_date, "발로란트") if article["createdAt"] > valorant_last]
+            fetch_overwatch_articles = [article for article in await self.safe_fetch_news(overwatch_news_articles, formatted_date, "오버워치") if article["createdAt"] > overwatch_last]
             
-            fetch_lol_articles = await self.safe_fetch_news(lol_news_articles, formatted_date, "롤")
-            fetch_valorant_articles = await self.safe_fetch_news(valorant_news_articles, formatted_date, "발로란트")
-            fetch_overwatch_articles = await self.safe_fetch_news(overwatch_news_articles, formatted_date, "오버워치")
+            # 2. 뉴스가 없으면 종료
+            if not (fetch_lol_articles or fetch_valorant_articles or fetch_overwatch_articles):
+                return
             
+            # 3. 뉴스 전송
             for channel_id, game_states in (await load_all_channel_state()).items():
                 articles_to_send = []
                 
-                if "lol" in game_states:
+                if game_states.get("lol", False):
                     articles_to_send.extend(fetch_lol_articles)
-                if "valorant" in game_states:
+                if game_states.get("valorant", False):
                     articles_to_send.extend(fetch_valorant_articles)
-                if "overwatch" in game_states:
+                if game_states.get("overwatch", False):
                     articles_to_send.extend(fetch_overwatch_articles)
 
                 if not articles_to_send:
@@ -103,6 +194,14 @@ class NewsCommand(commands.Cog):
                         if i < len(articles_to_send) - 1:
                             await asyncio.sleep(5)
 
+            # 4. 각 게임별로 전송한 뉴스가 있다면, 가장 최신 createdAt만 update_state로 갱신
+            if fetch_lol_articles:
+                await update_state("lol", [max(fetch_lol_articles, key=lambda x: x["createdAt"])])
+            if fetch_valorant_articles:
+                await update_state("valorant", [max(fetch_valorant_articles, key=lambda x: x["createdAt"])])
+            if fetch_overwatch_articles:
+                await update_state("overwatch", [max(fetch_overwatch_articles, key=lambda x: x["createdAt"])])
+
             now_done = datetime.now(pytz.timezone("Asia/Seoul")).strftime("%Y-%m-%d %H:%M:%S")
             print(f"✅ [{now_done}] 뉴스 전송 완료")
             
@@ -110,51 +209,71 @@ class NewsCommand(commands.Cog):
             now_error = datetime.now(pytz.timezone("Asia/Seoul")).strftime("%Y-%m-%d %H:%M:%S")
             print(f"❌ [{now_error}] 뉴스 루프 실행 중 오류: {e}")
 
-    @commands.command(name='뉴스확인', help='최근 뉴스를 조회합니다.')
-    async def check_news_now(self, ctx: commands.Context):
-        game_names = {"lol": "리그오브레전드", "valorant": "발로란트", "overwatch": "오버워치"}
-        channel_games = [game_names[game] for game, enabled in (await load_channel_state(ctx.channel.id)).items() if enabled]
+    @commands.command(
+            name='뉴스확인', 
+            help=(
+                "최신 뉴스 또는 특정 날짜의 뉴스를 확인합니다.\n\n"
+                "**▶️ 기본 사용법**\n"
+                "└ `/뉴스확인` 또는 `/뉴스확인 오늘` : 오늘의 뉴스를 확인합니다.\n"
+                "└ `/뉴스확인 어제` : 어제 뉴스를 확인합니다.\n\n"
+                "**📅 날짜로 검색**\n"
+                "└ `/뉴스확인 2025-07-14` : 해당 날짜의 뉴스를 확인합니다.\n"
+                "└ `/뉴스확인 2025.07.14` 또는 `/뉴스확인 2025/07/14` 도 지원합니다.\n\n"
+                "**ℹ️ 안내**\n"
+                "- 최대 10개의 최신 뉴스만 표시됩니다.\n"
+                "- 오늘 이후의 날짜를 입력하거나 날짜 형식이 올바르지 않으면 안내 메시지가 출력됩니다."
+            )
+    )
+    async def check_news_now(self, ctx: commands.Context, date_str: str = None):
+        if not date_str:
+            target_date = date.today()
+        elif date_str.lower() == "오늘":
+            target_date = date.today()
+        elif date_str.lower() == "어제":
+            target_date = date.today() - timedelta(days=1)
+        else:
+            for format in ["%Y-%m-%d", "%Y.%m.%d", "%Y/%m/%d"]:
+                try:
+                    target_date = datetime.strptime(date_str, format).date()
+                    if target_date > date.today():
+                        await safe_send(ctx, "❌ 날짜가 오늘 이후일 수 없습니다.\n\n자세한 사용법은 `/뉴스확인` 명령어를 참고해주세요!")
+                        return
+                    break
+                except ValueError:
+                    continue
 
-        if not channel_games:
-            await safe_send(ctx, "❌ 이 채널은 뉴스 설정이 되어 있지 않습니다.\n`/뉴스채널설정 롤 발로란트 오버워치`로 설정해주세요!")
+        if not target_date:
+            await safe_send(ctx, "❌ 날짜 형식이 올바르지 않습니다. \n 예시: `/뉴스확인 2025-07-14`\n\n자세한 사용법은 `/뉴스확인` 명령어를 참고해주세요!")
             return
 
-        await safe_send(ctx, f"🔍 현재 채널에 설정된 뉴스 채널: {ctx.channel.name} -> {', '.join(channel_games)}")
-
         try:
-            formatted_date = date.today().strftime('%Y-%m-%d')
             articles_to_send = []
+            formatted_date = target_date.strftime('%Y-%m-%d')
 
-            if "lol" in channel_games:
-                articles_to_send.extend(await self.safe_fetch_news(lol_news_articles, formatted_date, "롤"))
-            if "valorant" in channel_games:
-                articles_to_send.extend(await self.safe_fetch_news(valorant_news_articles, formatted_date, "발로란트"))
-            if "overwatch" in channel_games:
-                articles_to_send.extend(await self.safe_fetch_news(overwatch_news_articles, formatted_date, "오버워치"))
+            articles_to_send.extend(await self.safe_fetch_news(lol_news_articles, formatted_date, "롤"))
+            articles_to_send.extend(await self.safe_fetch_news(valorant_news_articles, formatted_date, "발로란트"))
+            articles_to_send.extend(await self.safe_fetch_news(overwatch_news_articles, formatted_date, "오버워치"))
 
+            articles_to_send.sort(key=lambda x: x['createdAt'], reverse=True)
+
+            # 1. 뉴스 목록 embed (상단 안내)
+            info_embed = discord.Embed(
+                title=f"🔎 {formatted_date} 뉴스 검색 결과",
+                description=f"총 {len(articles_to_send)}건의 뉴스가 검색되었습니다.\n아래에서 페이지를 넘겨 뉴스를 확인하세요.",
+                color=0x1E90FF
+            )
+
+            # 뉴스가 없을 때 안내
             if not articles_to_send:
-                await safe_send(ctx, "❌ 현재 새로운 뉴스가 없습니다.")
+                info_embed.description = f"❌ 해당 {formatted_date} 날짜의 뉴스가 없습니다.\n\n자세한 사용법은 `/뉴스확인` 명령어를 참고해주세요!"
+                await ctx.send(embed=info_embed)
                 return
-            
-            articles_to_send.sort(key=lambda x: x['createdAt'])
+            else:
+                await safe_send(ctx, f"📢 해당 {formatted_date} 날짜의 새로운 뉴스 {len(articles_to_send)}개를 발견했습니다!\n\n{formatted_date} 날짜의 이스포츠 뉴스 찾는 중... 잠시만 기다려주세요! 🙏")
 
-            await safe_send(ctx, f"📢 새로운 뉴스 {len(articles_to_send)}개를 발견했습니다!")
-            for i, article in enumerate(articles_to_send[-10:]):
-                try:
-                    embed = self.create_news_embed(article)
-                    await safe_send(ctx, embed=embed)
-                    
-                    # 마지막 뉴스가 아니면 5초 대기
-                    if i < min(len(articles_to_send), 10) - 1:
-                        await asyncio.sleep(5)
-
-                except Exception as e:
-                    await safe_send(ctx, f"❌ 뉴스 전송 중 오류: {e}")
-                    continue
-            
-            if len(articles_to_send) > 10:
-                await safe_send(ctx, f"📋 총 {len(articles_to_send)}개 중 최신 10개만 표시했습니다.")
-            
+            # 2. NewsView (info_embed + 뉴스 embed들, per_page=4)
+            view = NewsView(info_embed, articles_to_send, page=0, per_page=4)
+            await ctx.send(embeds=view.get_embeds(), view=view)
         except Exception as e:
             await safe_send(ctx, f"❌ 뉴스 확인 중 오류가 발생했습니다: {e}")
             print(f"뉴스확인 명령어 오류: {e}")
@@ -248,6 +367,18 @@ class NewsCommand(commands.Cog):
             await safe_send(ctx, embed=embed)
 
     async def safe_fetch_news(self, game_func: Callable, formatted_date: str, game_name: str):
+        """
+        뉴스 크롤링 함수를 실행하고, 뉴스 데이터를 반환합니다.
+        뉴스 데이터가 없으면 빈 리스트를 반환합니다.
+
+        Args:
+            game_func: 뉴스 크롤링 함수
+            formatted_date: 뉴스 크롤링 함수에 전달할 날짜 문자열
+            game_name: 뉴스 크롤링 함수에 전달할 게임 이름
+
+        Returns:
+            list: 뉴스 데이터 리스트
+        """
         try:
             news_data = await game_func(formatted_date)
             if news_data and isinstance(news_data, list):

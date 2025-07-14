@@ -4,22 +4,6 @@ import heapq
 
 from typing import List, Dict, Any
 from datetime import date
-from db import save_state, load_state
-
-
-async def update_state(game: str, articles: List[Dict[str, Any]]) -> None:
-    """
-    데이터베이스 테이블에 game별 lastProcessedAt을 최신화한다.
-
-    Args:
-        game (str): lastProcessedAt을 기록할 key 값. (롤/발로란트/오버워치)
-        articles (List[Dict]): 마지막 처리 시각 이후에 생성된 기사 목록
-    """
-    if not articles:
-        return
-    
-    max_at = max([article.get('createdAt', 0) for article in articles])
-    await save_state(game, max_at)
 
 
 async def lol_news_articles(formatted_date: str) -> List[Dict[str, Any]]:
@@ -48,21 +32,7 @@ async def lol_news_articles(formatted_date: str) -> List[Dict[str, Any]]:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url=url, params=params, headers=headers) as response:
                 data = await response.json()
-                content = data.get("content", [])
-
-        # 이전에 가져왔던 롤 이스포츠 기사 중 마지막으로 처리한 기사의 시각을 불러옴.
-        state = await load_state()
-        lol_last_at = state.get("lol", 0)
-
-        # createdAt이 lol의 lastProcessedAt보다 큰(신규) 기사만 반환
-        lol_new_articles = sorted(
-            (a for a in content if a.get('createdAt', 0) > lol_last_at),
-            key=lambda x: x['createdAt']
-        )
-
-        # 신규 기사가 있을 때만 상태 갱신
-        if lol_new_articles:
-            await update_state("lol", lol_new_articles)
+                lol_new_articles = data.get("content", [])
         
         return lol_new_articles
 
@@ -97,20 +67,7 @@ async def valorant_news_articles(formatted_date: str) -> List[Dict[str, Any]]:
         async with aiohttp.ClientSession() as session:
             async with session.get(url=url, params=params, headers=headers) as response:
                 data = await response.json()
-                content = data.get("content", [])
-
-        state = await load_state()
-        valorant_last_at = state.get("valorant", 0)
-
-        # lastProcessedAt 이후에 생성된 신규 기사만 정렬하여 반환
-        valorant_new_articles = sorted(
-            (a for a in content if a.get('createdAt', 0) > valorant_last_at),
-            key=lambda x: x['createdAt']
-        )
-
-        # 신규 기사가 있을 때만 상태 DB 갱신
-        if valorant_new_articles:
-            await update_state("valorant", valorant_new_articles)
+                valorant_new_articles = data.get("content", [])
 
         return valorant_new_articles
 
@@ -145,20 +102,7 @@ async def overwatch_news_articles(formatted_date: str) -> List[Dict[str, Any]]:
         async with aiohttp.ClientSession() as session:
             async with session.get(url=url, params=params, headers=headers) as response:
                 data = await response.json()
-                content = data.get("content", [])
-
-        state = await load_state()
-        overwatch_last_at = state.get("overwatch", 0)
-
-        # lastProcessedAt 이후에 생성된 신규 기사만 정렬하여 반환
-        overwatch_new_articles = sorted(
-            (a for a in content if a.get('createdAt', 0) > overwatch_last_at),
-            key=lambda x: x['createdAt']
-        )
-
-        # 신규 기사가 있을 때만 상태 DB 갱신
-        if overwatch_new_articles:
-            await update_state("overwatch", overwatch_new_articles)
+                overwatch_new_articles = data.get("content", [])
 
         return overwatch_new_articles
 
