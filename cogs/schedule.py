@@ -1,6 +1,7 @@
+from zoneinfo import ZoneInfo
 from discord.ext import commands, tasks
-from crawlers.schedule_crawling import fetch_lol_league_schedule_months, fetch_monthly_league_schedule, parse_lol_month_days
-from datetime import datetime, timezone
+from crawlers.schedule_crawling import fetch_lol_league_schedule_months, fetch_monthly_league_schedule, fetch_valorant_league_schedule, parse_lol_month_days
+from datetime import datetime, timedelta, timezone
 import discord
 import io
 import aiohttp
@@ -18,7 +19,7 @@ async def safe_send(ctx_or_channel, content=None, **kwargs):
         print(f"메시지 전송 실패: {e}")
         return None
 
-LEAGUE_TYPE = {
+LOL_LEAGUE_TYPE = {
     "LCK": "lck",
     "LPL": "lpl",
     "LEC": "lec",
@@ -33,61 +34,101 @@ class ScheduleCommand(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
     
-    @commands.command(name='롤리그', help='LoL 경기 일정 확인 (곧 시작할 4경기). 예) /롤리그 LCK \n\n 지원 리그: LCK, LPL, LEC, LCS, MSI, WORLDS, LJL, EWC')
+    @commands.command(name='리그', help="""LoL 및 발로란트 경기 일정 확인 (곧 시작할 4경기).
+    예시: /리그 롤 LCK, /리그 발로란트 퍼시픽
+
+    지원 게임: 롤(LOL, 롤, 리그오브레전드), 발로란트(VALORANT, 발로란트)
+    롤 지원 리그: LCK, LPL, LEC, LCS, MSI, WORLDS, LJL, EWC
+    발로란트 지원 리그: 퍼시픽, 마스터스, EMEA, 아메리카 등""")
     @commands.cooldown(1, 15, commands.BucketType.user)
-    async def show_schedule(self, ctx: commands.Context, league_str: str):
+    async def show_schedule(self, ctx: commands.Context, game_name: str, league_str: str):
         """다가오는 4경기 일정을 임베드로 표시합니다."""
-        
-        try:
-            league_key = league_str.upper()
-            if league_key not in LEAGUE_TYPE:
-                await safe_send(ctx, f"❌ 지원하지 않는 리그: {league_key}")
-                return
+        GAME_TYPE = {
+            "LOL": "lol",
+            "lol": "lol",
+            "롤": "lol",
+            "리그오브레전드": "lol",
+            "VALORANT": "valorant",
+            "valorant": "valorant",
+            "발로란트": "valorant",
+        }
 
-            league_code = LEAGUE_TYPE[league_key]
-            now_dt = datetime.now(timezone.utc)
-            today_iso = now_dt.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-            now_ym = now_dt.strftime("%Y-%m")
-
-            print(f"롤리그 검색 시작: {league_key}")
-            await safe_send(ctx, f"🔍 롤리그 검색 시작: {league_key}... 잠시만 기다려주세요.")
-
-            # 월 목록 조회
-            year_str = now_dt.strftime("%Y")
-            months_resp = await fetch_lol_league_schedule_months(year_str, league_code)
-            months_list: list[str] = (months_resp or {}).get("content", [])
-            months_list = [m for m in months_list if m >= now_ym]
-
-            upcoming: list[dict] = []
-
-            # 월별 일정 수집 (안전한 간격)
-            for i, ym in enumerate(months_list):
-                if i > 0:
-                    await asyncio.sleep(1)
-                    
-                print(f"월 일정 조회: {ym}")
-                month_resp = await fetch_monthly_league_schedule(ym, league_code)
-                if not month_resp:
-                    continue
-                for match in parse_lol_month_days(month_resp):
-                    if match["startDate"] and match["startDate"] >= today_iso:
-                        upcoming.append(match)
-                if len(upcoming) >= 4:
-                    break
-
-            if not upcoming:
-                await safe_send(ctx, "❌ 예정된 경기를 찾을 수 없습니다.")
-                return
-
-            upcoming.sort(key=lambda m: m["startDate"])
-            upcoming = upcoming[:4]
-
-            print(f"경기 {len(upcoming)}개 발견, 임베드 생성 시작")
-            
-        except Exception as e:
-            print(f"롤리그 명령어 실행 중 오류: {e}")
-            await safe_send(ctx, "❌ 경기 일정을 가져오는 중 오류가 발생했습니다.")
+        game_type = GAME_TYPE.get(game_name.lower())
+        if not game_type:
+            await safe_send(ctx, f"❌ 지원하지 않는 게임: {game_name}\n\n 지원하는 게임 키워드: {', '.join(GAME_TYPE.keys())}")
             return
+        
+        if game_type == "lol":
+            try:
+                league_key = league_str.upper()
+                if league_key not in LOL_LEAGUE_TYPE:
+                    await safe_send(ctx, f"❌ 지원하지 않는 리그: {league_key}")
+                    return
+
+                league_code = LOL_LEAGUE_TYPE[league_key]
+                now_dt = datetime.now(timezone.utc)
+                today_iso = now_dt.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+                today_kst = now_dt.astimezone(ZoneInfo("Asia/Seoul")).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+                now_ym = now_dt.strftime("%Y-%m")
+
+                print(f"롤 리그 검색 시작: {league_key}")
+                await safe_send(ctx, f"🔍 롤 리그 검색 시작: {league_key}... 잠시만 기다려주세요.")
+
+                # 월 목록 조회
+                year_str = now_dt.strftime("%Y")
+                months_resp = await fetch_lol_league_schedule_months(year_str, league_code)
+                months_list: list[str] = (months_resp or {}).get("content", [])
+                months_list = [m for m in months_list if m >= now_ym]
+
+                upcoming: list[dict] = []
+
+                # 월별 일정 수집
+                for i, ym in enumerate(months_list):
+                    if i > 0:
+                        await asyncio.sleep(1)
+                        
+                    print(f"월 일정 조회: {ym}")
+                    month_resp = await fetch_monthly_league_schedule(ym, league_code)
+                    if not month_resp:
+                        continue
+                    for match in parse_lol_month_days(month_resp):
+                        if match["startDate"] and match["startDate"] >= today_iso:
+                            upcoming.append(match)
+                    if len(upcoming) >= 4:
+                        break
+
+                if not upcoming:
+                    await safe_send(ctx, "❌ 예정된 롤 경기를 찾을 수 없습니다.")
+                    return
+
+                upcoming.sort(key=lambda m: m["startDate"])
+                upcoming = upcoming[:4]
+
+                print(f"경기 {len(upcoming)}개 발견, 임베드 생성 시작")
+                
+            except Exception as e:
+                print(f"롤리그 명령어 실행 중 오류: {e}")
+                await safe_send(ctx, "❌ 롤 경기 일정을 가져오는 중 오류가 발생했습니다.")
+                return
+        
+        elif game_type == "valorant":
+            try:
+                print(f"발로란트 리그 검색 시작: {league_str}")
+                await safe_send(ctx, f"🔍 발로란트 리그 검색 시작: {league_str}... 잠시만 기다려주세요.")
+
+                upcoming = await fetch_valorant_league_schedule(league_str)
+                if not upcoming:
+                    await safe_send(ctx, "❌ 예정된 발로란트 경기를 찾을 수 없습니다.")
+                    return
+
+                upcoming.sort(key=lambda m: m["startDate"])
+                upcoming = upcoming[:4]
+
+                print(f"경기 {len(upcoming)}개 발견, 임베드 생성 시작!")
+            except Exception as e:
+                print(f"발로란트 리그 명령어 실행 중 오류: {e}")
+                await safe_send(ctx, "❌ 발로란트 경기 일정을 가져오는 중 오류가 발생했습니다.")
+                return
 
         # 이미지 배너 생성 및 Embed 전송
         async def build_scoreboard(team1: dict, team2: dict, score1, score2):
@@ -96,7 +137,10 @@ class ScheduleCommand(commands.Cog):
                 async with aiohttp.ClientSession() as session:
                     async def fetch_img(url):
                         await asyncio.sleep(0.2)
-                        async with session.get(url) as resp:
+                        headers = {
+                            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Whale/4.32.315.22 Safari/537.36"
+                        }
+                        async with session.get(url=url, headers=headers) as resp:
                             if resp.status == 200:
                                 data = await resp.read()
                                 return Image.open(io.BytesIO(data)).convert("RGBA")
