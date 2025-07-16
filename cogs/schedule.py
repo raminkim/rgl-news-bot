@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 import certifi
 from discord.ext import commands, tasks
 from crawlers.schedule_crawling import fetch_lol_league_schedule_months, fetch_monthly_league_schedule, fetch_valorant_league_schedule, parse_lol_month_days
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import discord
 import io
 import aiohttp
@@ -53,6 +53,7 @@ class ScheduleCommand(commands.Cog):
             "VALORANT": "valorant",
             "valorant": "valorant",
             "발로란트": "valorant",
+            "발로": "valorant",
         }
 
         game_type = GAME_TYPE.get(game_name.lower())

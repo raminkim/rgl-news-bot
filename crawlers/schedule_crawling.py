@@ -1,7 +1,6 @@
 import aiohttp
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
-from collections import defaultdict
 
 _TEAM_NAME_KEYS = (
     "teamCode",
@@ -35,8 +34,8 @@ VALORANT_LEAGUE_IDS = {
     "masters":  ["608", "581"],
     "emea":     ["624", "607", "585", "580", "564"],
     "pacific":  ["622", "590", "566"],
-    "americas": ["601"],
-    "na":       ["625", "584", "565"],
+    "na":       ["601"],
+    "americas": ["625", "584", "565"],
     "japan":    ["623"],
     "brazil":   ["633"],
 }
