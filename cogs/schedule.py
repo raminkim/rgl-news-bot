@@ -35,13 +35,27 @@ LOL_LEAGUE_TYPE = {
 class ScheduleCommand(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.ssl_context = ssl.create_default_context(cafile=certifi.where())
-        self.connector = aiohttp.TCPConnector(ssl=self.ssl_context)
+        self.ssl_context = ssl.create_default_context()
+        self.ssl_context.load_verify_locations(certifi.where())
+        self.connector = aiohttp.TCPConnector(
+            ssl=self.ssl_context,
+            limit=4,
+            ttl_dns_cache=300,
+            force_close=True
+        )
+        self.timeout = aiohttp.ClientTimeout(total=15)
         self.session = None
     
     async def cog_load(self):
         if self.session is None:
-            self.session = aiohttp.ClientSession(connector=self.connector)
+            self.session = aiohttp.ClientSession(
+                connector=self.connector,
+                timeout=self.timeout,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Whale/4.32.315.22 Safari/537.36",
+                    "Accept": "image/avif,image/webp,image/*,*/*;q=0.8"
+                }
+            )
 
     async def cog_unload(self):
         if self.session:
@@ -150,15 +164,18 @@ class ScheduleCommand(commands.Cog):
             """팀 로고와 점수를 조합한 PNG BytesIO 반환"""
             try:
                 async def fetch_img(url):
-                    await asyncio.sleep(0.2)
-                    headers = {
-                        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Whale/4.32.315.22 Safari/537.36"
-                    }
-                    async with self.session.get(url=url, headers=headers) as resp:
-                        if resp.status == 200:
-                            data = await resp.read()
-                            return Image.open(io.BytesIO(data)).convert("RGBA")
-                        raise ValueError("img dl fail")
+                    for attempt in range(3):
+                        try:
+                            await asyncio.sleep(0.3 * attempt)
+                            async with self.session.get(url) as resp:
+                                if resp.status == 200:
+                                    data = await resp.read()
+                                    return Image.open(io.BytesIO(data)).convert("RGBA")
+                                raise ValueError(f"HTTP {resp.status}")
+                        except Exception as e:
+                            if attempt == 2:
+                                raise e
+                            print(f"이미지 다운로드 재시도 {attempt + 1}/3: {e}")
 
                 img1 = await fetch_img(team1["img"])
                 await asyncio.sleep(0.2)
