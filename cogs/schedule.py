@@ -154,7 +154,7 @@ class ScheduleCommand(commands.Cog):
                     headers = {
                         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Whale/4.32.315.22 Safari/537.36"
                     }
-                    async with self.session.get(url=url, headers=headers) as resp:
+                    async with self.session.get(url=url, headers=headers, ssl=False) as resp:
                         if resp.status == 200:
                             data = await resp.read()
                             return Image.open(io.BytesIO(data)).convert("RGBA")
