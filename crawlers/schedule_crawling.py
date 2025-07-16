@@ -1,6 +1,7 @@
 import aiohttp
-from datetime import datetime, timezone
-
+from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
+from collections import defaultdict
 
 _TEAM_NAME_KEYS = (
     "teamCode",
@@ -17,6 +18,28 @@ _TEAM_IMG_KEYS = (
     "whiteImageUrl",
     "blackImageUrl",
 )
+
+# 별칭 → 표준 키
+VALORANT_LEAGUE_ALIAS = {
+    "masters":  "masters", "MASTER": "masters", "마스터스": "masters",
+    "emea": "emea", "EMEA": "emea",
+    "pacific": "pacific", "PACIFIC": "pacific", "퍼시픽": "pacific",
+    "americas": "americas", "AMERICAS": "americas", "아메리카": "americas",
+    "na": "na", "NA": "na",
+    "japan": "japan", "JP": "japan",
+    "brazil": "brazil", "BR": "brazil",
+}
+
+# 표준 키 → 실제 ID 목록
+VALORANT_LEAGUE_IDS = {
+    "masters":  ["608", "581"],
+    "emea":     ["624", "607", "585", "580", "564"],
+    "pacific":  ["622", "590", "566"],
+    "americas": ["601"],
+    "na":       ["625", "584", "565"],
+    "japan":    ["623"],
+    "brazil":   ["633"],
+}
 
 async def fetch_lol_league_schedule_months(year_str: str, league_str: str):
     """네이버 e스포츠 API에서 *해당 연도의 월 목록*을 가져옵니다.
@@ -215,3 +238,108 @@ def _find_team_img(team: dict | None) -> str | None:
         if url:
             return str(url)
     return None
+
+
+async def fetch_valorant_league_schedule(league_input: str):
+    """
+    발로란트 리그 일정을 크롤링합니다. (시간대 KST로 수정)
+    """
+    # 1. 입력받은 별칭(league_input)으로 표준 키 찾기
+    standard_key = VALORANT_LEAGUE_ALIAS.get(league_input.lower())
+    if not standard_key:
+        # 오류 메시지에서 원래 입력값(league_input)을 사용하도록 수정
+        print(f"'{league_input}'에 해당하는 리그를 찾을 수 없습니다.")
+        return None
+    
+    # 2. 찾은 표준 키로 실제 ID 목록 찾기
+    serieIds_list = VALORANT_LEAGUE_IDS.get(standard_key)
+    if not serieIds_list:
+        print(f"오류: 표준 키 '{standard_key}'에 대한 ID 목록을 찾을 수 없습니다.")
+        return None
+    
+    # 3. 한국 시간(KST) 기준으로 오늘 ~ 30일 이후 날짜 구하기
+    KST = ZoneInfo("Asia/Seoul")
+    today = datetime.now(KST)
+    end_date = today + timedelta(days=30)
+    from_date_str = today.strftime("%Y-%m-%d")
+    to_date_str = end_date.strftime("%Y-%m-%d")
+    
+    url = "https://esports.op.gg/valorant/graphql/__query__GetMatchesBySeries"
+    headers = {
+        'accept': '*/*',
+        'content-type': 'application/json',
+        'origin': 'https://esports.op.gg',
+        'referer': 'https://esports.op.gg/valorant',
+    }
+
+    query = """
+        fragment CoreTeam on Team { id name acronym imageUrl nationality __typename }
+        fragment CoreValorantMatchCompact on Match {
+            id tournamentId name scheduledAt beginAt matchType
+            homeTeamId homeTeam { ...CoreTeam __typename } homeScore
+            awayTeamId awayTeam { ...CoreTeam __typename } awayScore
+            winnerTeam { ...CoreTeam __typename }
+            status draw forfeit matchVersion __typename
+        }
+        query GetMatchesBySeries($serieIds: [ID]!, $from: Date, $to: Date, $teamId: ID) {
+            matchesBySeries(serieIds: $serieIds, from: $from, to: $to, teamId: $teamId) {
+                ...CoreValorantMatchCompact serieId __typename
+            }
+        }
+    """
+    payload = {
+        "operationName": "GetMatchesBySeries",
+        "variables": { "serieIds": serieIds_list, "from": from_date_str, "to": to_date_str },
+        "query": query
+    }
+
+    # 4. 요청 보내기
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, headers=headers, json=payload) as response:
+            if response.status == 200:
+                data = await response.json()
+
+                matches = data.get('data', {}).get('matchesBySeries')
+                if not matches:
+                    return None
+                
+                sorted_matches = sorted(matches, key=lambda x: x.get('scheduledAt'))
+
+                KST = ZoneInfo("Asia/Seoul")
+
+                status_map = {
+                    "not_started": "BEFORE",
+                    "running": "STARTED",
+                    "finished": "END"
+                }
+
+                matches_list = []
+                for match in sorted_matches:
+                    utc_time = datetime.fromisoformat(match.get('scheduledAt').replace('Z', '+00:00'))
+                    kst_time = utc_time.astimezone(KST)
+
+                    valorant_match = {
+                        "matchId": match.get("id"),
+                        "startDate": kst_time.isoformat(),
+                        "status": status_map.get(match.get("status"), match.get("status")),
+                        "leagueName": None,
+                        "blockName": None,
+                        "team1": match.get("homeTeam", {}).get("name"),
+                        "team2": match.get("awayTeam", {}).get("name"),
+                        "team1Img": match.get("homeTeam", {}).get("imageUrl"),
+                        "team2Img": match.get("awayTeam", {}).get("imageUrl"),
+                        "score1": match.get("homeScore"),
+                        "score2": match.get("awayScore"),
+                    }
+                    matches_list.append(valorant_match)
+
+                return matches_list
+
+            else:
+                print(f"❌ 발로란트 일정 크롤링 실패: {response.status}")
+                return None
+            
+
+if __name__ == "__main__":
+    import asyncio
+    print(asyncio.run(fetch_valorant_league_schedule("퍼시픽")))
