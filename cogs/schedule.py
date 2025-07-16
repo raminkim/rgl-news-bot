@@ -35,6 +35,18 @@ LOL_LEAGUE_TYPE = {
 class ScheduleCommand(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.ssl_context = ssl.create_default_context(cafile=certifi.where())
+        self.connector = aiohttp.TCPConnector(ssl=self.ssl_context)
+        self.session = None
+    
+    async def cog_load(self):
+        if self.session is None:
+            self.session = aiohttp.ClientSession(connector=self.connector)
+
+    async def cog_unload(self):
+        if self.session:
+            await self.session.close()
+            self.session = None
     
     @commands.command(name='리그', help="""LoL 및 발로란트 경기 일정 확인 (곧 시작할 4경기).
     예시: /리그 롤 LCK, /리그 발로란트 퍼시픽
@@ -137,22 +149,20 @@ class ScheduleCommand(commands.Cog):
         async def build_scoreboard(team1: dict, team2: dict, score1, score2):
             """팀 로고와 점수를 조합한 PNG BytesIO 반환"""
             try:
-                ssl_context = ssl.create_default_context(cafile=certifi.where())
-                async with aiohttp.ClientSession() as session:
-                    async def fetch_img(url):
-                        await asyncio.sleep(0.2)
-                        headers = {
-                            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Whale/4.32.315.22 Safari/537.36"
-                        }
-                        async with session.get(url=url, headers=headers, ssl=ssl_context) as resp:
-                            if resp.status == 200:
-                                data = await resp.read()
-                                return Image.open(io.BytesIO(data)).convert("RGBA")
-                            raise ValueError("img dl fail")
-
-                    img1 = await fetch_img(team1["img"])
+                async def fetch_img(url):
                     await asyncio.sleep(0.2)
-                    img2 = await fetch_img(team2["img"])
+                    headers = {
+                        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Whale/4.32.315.22 Safari/537.36"
+                    }
+                    async with self.session.get(url=url, headers=headers) as resp:
+                        if resp.status == 200:
+                            data = await resp.read()
+                            return Image.open(io.BytesIO(data)).convert("RGBA")
+                        raise ValueError("img dl fail")
+
+                img1 = await fetch_img(team1["img"])
+                await asyncio.sleep(0.2)
+                img2 = await fetch_img(team2["img"])
 
                 # 로고 사이즈 조정
                 size = (70, 70)
@@ -264,4 +274,7 @@ class ScheduleCommand(commands.Cog):
             await safe_send(ctx, "❌ 명령어 실행 중 오류가 발생했습니다.")
 
 async def setup(bot: commands.Bot):
-    await bot.add_cog(ScheduleCommand(bot))
+    cog = ScheduleCommand(bot)
+    await bot.add_cog(cog)
+    if hasattr(cog, 'cog_load'):
+        await cog.cog_load()
