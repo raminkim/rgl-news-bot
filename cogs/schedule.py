@@ -1,5 +1,7 @@
+import ssl
 from zoneinfo import ZoneInfo
-from discord.ext import commands
+import certifi
+from discord.ext import commands, tasks
 from crawlers.schedule_crawling import fetch_lol_league_schedule_months, fetch_monthly_league_schedule, fetch_valorant_league_schedule, parse_lol_month_days
 from datetime import datetime, timezone
 import discord
@@ -135,13 +137,14 @@ class ScheduleCommand(commands.Cog):
         async def build_scoreboard(team1: dict, team2: dict, score1, score2):
             """팀 로고와 점수를 조합한 PNG BytesIO 반환"""
             try:
+                ssl_context = ssl.create_default_context(cafile=certifi.where())
                 async with aiohttp.ClientSession() as session:
                     async def fetch_img(url):
                         await asyncio.sleep(0.2)
                         headers = {
                             "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Whale/4.32.315.22 Safari/537.36"
                         }
-                        async with session.get(url=url, headers=headers) as resp:
+                        async with session.get(url=url, headers=headers, ssl=ssl_context) as resp:
                             if resp.status == 200:
                                 data = await resp.read()
                                 return Image.open(io.BytesIO(data)).convert("RGBA")
