@@ -1,5 +1,5 @@
 from discord.ext import commands
-from crawlers.player_crawling import search_valorant_players, fetch_valorant_player_info
+from crawlers.player_crawling import search_lol_players, search_valorant_players, fetch_valorant_player_info
 
 import discord
 import re
@@ -20,10 +20,11 @@ async def safe_send(ctx_or_channel, content=None, **kwargs):
         return None
 
 GAME_NAME = {
-    "롤": "leagueofLegends",
-    "LOL": "leagueofLegends",
-    "lol": "leagueofLegends",
+    "롤": "lol",
+    "LOL": "lol",
+    "lol": "lol",
     "발로란트": "valorant",
+    "발로": "valorant",
     "VALORANT": "valorant",
     "valorant": "valorant",
     "오버워치": "overwatch",
@@ -72,9 +73,7 @@ def format_url(url: str) -> str | None:
         print(f"URL 파싱 오류: {e}, URL: {url}")
         return None
 
-def create_player_embed(player_info: dict) -> discord.Embed:
-    """선수 정보 임베드를 생성합니다."""
-    
+def create_player_embed(player_info: dict, game_name: str = None) -> discord.Embed:
     embed = discord.Embed(
         title=f"🎮 {player_info.get('player_name', 'N/A')}",
         url=player_info.get('player_link'),
@@ -82,7 +81,6 @@ def create_player_embed(player_info: dict) -> discord.Embed:
         timestamp=datetime.now()
     )
 
-    # 선수 이미지 설정
     player_image_url = format_url(player_info.get('player_image'))
     if player_image_url:
         try:
@@ -90,11 +88,9 @@ def create_player_embed(player_info: dict) -> discord.Embed:
         except Exception as e:
             print(f"썸네일 설정 실패: {e}, URL: {player_image_url}")
 
-    # 현재 팀 정보
     if current_teams := player_info.get('current_teams'):
         current_team = current_teams[0]
         team_logo_url = format_url(current_team.get('team_logo'))
-        
         try:
             if team_logo_url:
                 embed.set_author(
@@ -105,40 +101,52 @@ def create_player_embed(player_info: dict) -> discord.Embed:
                 embed.set_author(name=f"🏆 Current Team: {current_team.get('team_name', 'N/A')}")
         except Exception as e:
             print(f"Author 설정 실패: {e}, URL: {team_logo_url}")
-            # 아이콘 없이 텍스트만 설정
             embed.set_author(name=f"🏆 Current Team: {current_team.get('team_name', 'N/A')}")
 
-    # 기본 정보
     if real_name := player_info.get('real_name'):
         embed.add_field(name="실명", value=real_name, inline=False)
     
     if current_teams:
         current_team = current_teams[0]
-        embed.add_field(
-            name="입단일",
-            value=current_team.get('team_period', '정보 없음'),
-            inline=False
-        )
 
-    # 과거 팀 이력
+        team_period = current_team.get('team_period', '정보 없음')
+        if not team_period.startswith('Contract Expires:'):
+            embed.add_field(
+                name="입단일",
+                value=team_period,
+                inline=False
+            )
+        # 롤일 때 계약 만료일 추가
+        if game_name == "lol":
+            contract_expires = None
+            if current_team.get('team_period', '').startswith('Contract Expires: '):
+                contract_expires = current_team['team_period'].replace('Contract Expires: ', '').strip()
+            if contract_expires:
+                try:
+                    date_obj = datetime.strptime(contract_expires, "%Y-%m-%d")
+                    contract_expires_str = date_obj.strftime("%Y.%m.%d")
+                except Exception:
+                    contract_expires_str = contract_expires
+                embed.add_field(
+                    name="계약 만료일",
+                    value=contract_expires_str,
+                    inline=False
+                )
+
     if past_teams := player_info.get('past_teams'):
         past_teams_list = [
             f"• **{team.get('team_name', 'N/A')}** ({team.get('team_period', '')})" 
             for team in past_teams[:5]
         ]
-        
         if len(past_teams) > 5:
             footer_text = f"\n\n*총 {len(past_teams)}개 팀 중 5개만 표시됩니다.*"
             past_teams_list.append(footer_text)
-
         past_teams_text = "\n".join(past_teams_list)
-        
         embed.add_field(
             name="📚 과거 팀 이력",
             value=past_teams_text or "정보 없음",
             inline=False
         )
-        
     return embed
 
 def extract_korean(text):
@@ -178,7 +186,7 @@ class PlayerButton(discord.ui.Button):
                 return
             
             # 분리된 함수를 호출하여 임베드 생성
-            embed = create_player_embed(player_info)
+            embed = create_player_embed(player_info, game_name="valorant")
             
             # 원래 메시지를 임베드로 교체
             await interaction.edit_original_response(content=None, embed=embed)
@@ -272,17 +280,27 @@ class PlayerCommand(commands.Cog):
             await safe_send(ctx, f"지원하지 않는 게임입니다. 지원 게임: {', '.join(GAME_NAME.keys())}")
             return
         
-        player_results = search_valorant_players(player_name)
-        if not player_results:
-            await safe_send(ctx, "❌ 선수 검색 결과가 존재하지 않습니다!")
-            return
-        
-        embed = discord.Embed(
-            title=f"🔍 '{player_name}' 닉네임 검색 결과",
-            description="동명이인 또는 유사 닉네임이 여러 명 검색되었습니다. 아래에서 확인하세요."
-        )
+        game_name = GAME_NAME[game_name]
+        if game_name == "lol":
+            player_results = search_lol_players(player_name)
+            if not player_results:
+                await safe_send(ctx, "❌ 롤 선수 검색 결과가 존재하지 않습니다!")
+                return
+            embed = create_player_embed(player_results, game_name)
+            await safe_send(ctx, embed=embed)
 
-        await safe_send(ctx, embed=embed, view=PlayerView(player_results))
+        elif game_name == "valorant":
+            player_results = search_valorant_players(player_name)
+            if not player_results:
+                await safe_send(ctx, "❌ 발로란트 선수 검색 결과가 존재하지 않습니다!")
+                return
+            
+            embed = discord.Embed(
+                title=f"🔍 '{player_name}' 닉네임 검색 결과",
+                description="동명이인 또는 유사 닉네임이 여러 명 검색되었습니다. 아래에서 확인하세요."
+            )
+
+            await safe_send(ctx, embed=embed, view=PlayerView(player_results))
 
 
 async def setup(bot: commands.Bot):
