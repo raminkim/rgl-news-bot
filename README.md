@@ -1,11 +1,11 @@
-# rgl-news-bot
+# discord-esports-news-bot
 
 
 # 프로젝트 소개
 
 이 프로젝트는 롤, 발로란트 이스포츠 소식을 크롤링해 가져오는 디스코드 봇입니다.
 
-- [디스코드 봇 '전령이' Docs 페이지 바로가기](https://sandy-llama-dc6.notion.site/rgl-news-bot-docs-219cfea5531080948be9fda944f3cea9?source=copy_link)
+- [디스코드 봇 '전령이' Docs 페이지 바로가기](https://sandy-llama-dc6.notion.site/Docs-219cfea5531080948be9fda944f3cea9?source=copy_link)
 
 ---
 
