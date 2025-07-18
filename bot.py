@@ -226,8 +226,6 @@ async def load_cogs():
             print(f'❌ {cog} 로드 실패: {e}')
             print(f'❌ 상세 오류: {type(e).__name__}: {e}')
             failed_cogs.append(cog)
-            import traceback
-            traceback.print_exc()
             
     print(f"\n📊 Cog 로드 결과:")
     print(f"✅ 성공: {len(successful_cogs)}개 - {', '.join(successful_cogs)}")
