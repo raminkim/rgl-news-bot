@@ -79,7 +79,7 @@ async def fetch_lol_league_schedule_months(year_str: str, league_str: str):
                 print(f"응답 내용: {response_text}")
                 return None
             
-async def fetch_monthly_league_schedule(year_month_str: str, league_str: str):
+async def fetch_monthly_lol_league_schedule(year_month_str: str, league_str: str):
     """네이버 e스포츠 API에서 *특정 월*의 경기 일정을 가져옵니다.
 
     `/v2/schedule/month` 엔드포인트를 호출해 주어진 월(YYYYMM)과
@@ -241,7 +241,7 @@ def _find_team_img(team: dict | None) -> str | None:
 
 async def fetch_valorant_league_schedule(league_input: str):
     """
-    발로란트 리그 일정을 크롤링합니다. (시간대 KST로 수정)
+    발로란트 리그 일정을 크롤링합니다.
     """
     # 1. 입력받은 별칭(league_input)으로 표준 키 찾기
     standard_key = VALORANT_LEAGUE_ALIAS.get(league_input.lower())
@@ -256,12 +256,10 @@ async def fetch_valorant_league_schedule(league_input: str):
         print(f"오류: 표준 키 '{standard_key}'에 대한 ID 목록을 찾을 수 없습니다.")
         return None
     
-    # 3. 한국 시간(KST) 기준으로 오늘 ~ 30일 이후 날짜 구하기
-    KST = ZoneInfo("Asia/Seoul")
-    today = datetime.now(KST)
-    end_date = today + timedelta(days=30)
-    from_date_str = today.strftime("%Y-%m-%d")
-    to_date_str = end_date.strftime("%Y-%m-%d")
+    # 3. UTC 기준으로 오늘 ~ 30일 이후 날짜 구하기
+    utc_now = datetime.now(timezone.utc)
+    from_date_str = utc_now.strftime("%Y-%m-%d")
+    to_date_str = (utc_now + timedelta(days=30)).strftime("%Y-%m-%d")
     
     url = "https://esports.op.gg/valorant/graphql/__query__GetMatchesBySeries"
     headers = {
