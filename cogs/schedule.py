@@ -328,7 +328,7 @@ class ScheduleCommand(commands.Cog):
     지원 게임: 롤(LOL, 롤, 리그오브레전드), 발로란트(VALORANT, 발로란트)
     롤 지원 리그: LCK, LPL, LEC, LCS, MSI, WORLDS, LJL, EWC
     발로란트 지원 리그: 퍼시픽, 마스터스, EMEA, 아메리카 등""")
-    @commands.cooldown(1, 15, commands.BucketType.user)
+    @commands.cooldown(1, 10, commands.BucketType.user)
     async def show_schedule(self, ctx: commands.Context, game_name: str):
         """다가오는 4경기 일정을 임베드로 표시합니다."""
         GAME_TYPE = {
