@@ -16,7 +16,8 @@ def split_country_field(value: str):
     else:
         return {"code": "", "name": value.strip()}
 
-def search_lol_players(player_name: str) -> dict:
+def search_lol_players_individual(player_name: str) -> dict:
+    """단일 플레이어 페이지에서 정보를 추출하는 함수"""
     url = f'https://lol.fandom.com/wiki/{player_name}'
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Whale/4.32.315.22 Safari/537.36',
@@ -165,6 +166,53 @@ def search_lol_players(player_name: str) -> dict:
     unique.sort(key=lambda t: parse_end(t["team_period"]), reverse=True)
     result["past_teams"] = unique
     return result
+
+def search_lol_players(player_name: str) -> list:
+    """
+    LOL 플레이어 검색 결과에서 플레이어 정보를 추출한다.
+    
+    Args:
+        player_name (str): 검색할 플레이어 이름
+    
+    Returns:
+        list: 플레이어 정보 리스트
+    """
+
+    url = f'https://lol.fandom.com/wiki/{player_name}'
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Whale/4.32.315.22 Safari/537.36',
+    }
+
+    try:
+        response = requests.get(url=url, headers=headers)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        print(f"Failed to fetch data: {e}")
+        return []
+    
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    # 단일 플레이어 검색 결과인 경우 처리
+    if not soup.find('table', class_='ambox-green'):
+        return [{"player_label": player_name, "search_player_name": player_name}]
+
+    results = []
+
+    # 동명이인 검색 결과 확인
+    player_link_tag = soup.select('a.catlink-players')
+
+    if not player_link_tag:
+        # 동명이인이 없는 경우, 직접 검색 시도
+        return [{"player_label": player_name, "search_player_name": player_name}]
+
+    # 동명이인이 있는 경우, 모든 결과 반환
+    for player_link in player_link_tag:
+        player_label = player_link.get_text(strip=True)
+        search_player_name = player_link['href'].split('/')[-1]
+
+        results.append({"player_label": player_label, "search_player_name": search_player_name})
+    
+    return results
 
 
 def search_valorant_players(player_name: str) -> list:
@@ -338,6 +386,5 @@ async def fetch_valorant_player_info(player_name: str, real_name: str, player_li
                 return player_info
 
 if __name__ == '__main__':
-    player_data = search_lol_players('poby')
-    import asyncio
-    valorant_data = asyncio.run(fetch_valorant_player_info("mako", "김명관", "https://www.vlr.gg/player/4462/mako"))
+    player_data = search_lol_players('smash')
+    print(player_data)

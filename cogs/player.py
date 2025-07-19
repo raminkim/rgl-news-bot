@@ -1,5 +1,5 @@
 from discord.ext import commands
-from crawlers.player_crawling import search_lol_players, search_valorant_players, fetch_valorant_player_info
+from crawlers.player_crawling import search_lol_players, search_valorant_players, fetch_valorant_player_info, search_lol_players_individual
 
 import discord
 import re
@@ -161,32 +161,47 @@ def extract_korean(text):
     return None
 
 class PlayerButton(discord.ui.Button):
-    def __init__(self, player_data: dict, label: str, row: int):
+    def __init__(self, player_data: dict, label: str, row: int, game_type: str = "valorant"):
         super().__init__(label=label, emoji='🔍', style=discord.ButtonStyle.primary, row=row)
         self.player_data = player_data
+        self.game_type = game_type
     
     async def callback(self, interaction: discord.Interaction):
         # 즉시 응답 - 3초 제한 때문에 빠르게 처리
         await interaction.response.send_message("선수 정보를 가져오는 중입니다... ⏳")
         
         try:
-            player_name = self.player_data.get('player_name')
-            real_name = self.player_data.get('real_name')
-            player_link = self.player_data.get('player_link')
-
-            # 타임아웃 설정하여 크롤링
-            timeout = aiohttp.ClientTimeout(total=10)  # 10초 타임아웃
-            
-            # 선수 상세 정보 가져오기
-            player_info = await fetch_valorant_player_info(player_name, real_name, player_link)
-
-            # player_info가 비어있거나 None인 경우 처리
-            if not player_info:
-                await interaction.edit_original_response(content="해당 선수의 정보를 찾을 수 없습니다.")
-                return
-            
-            # 분리된 함수를 호출하여 임베드 생성
-            embed = create_player_embed(player_info, game_name="valorant")
+            if self.game_type == "valorant":
+                player_name = self.player_data.get('player_name')
+                real_name = self.player_data.get('real_name')
+                player_link = self.player_data.get('player_link')
+                
+                # 선수 상세 정보 가져오기
+                player_info = await fetch_valorant_player_info(player_name, real_name, player_link)
+                
+                # player_info가 비어있거나 None인 경우 처리
+                if not player_info:
+                    await interaction.edit_original_response(content="해당 선수의 정보를 찾을 수 없습니다.")
+                    return
+                
+                # 분리된 함수를 호출하여 임베드 생성
+                embed = create_player_embed(player_info, game_name="valorant")
+                
+            elif self.game_type == "lol":
+                search_player_name = self.player_data.get('search_player_name')
+                player_label = self.player_data.get('player_label')
+                
+                # 롤 선수 상세 정보 가져오기 (동기 함수를 비동기로 래핑)
+                loop = asyncio.get_event_loop()
+                player_info = await loop.run_in_executor(None, search_lol_players_individual, search_player_name)
+                
+                # player_info가 비어있거나 None인 경우 처리
+                if not player_info:
+                    await interaction.edit_original_response(content="해당 선수의 정보를 찾을 수 없습니다.")
+                    return
+                
+                # 분리된 함수를 호출하여 임베드 생성
+                embed = create_player_embed(player_info, game_name="lol")
             
             # 원래 메시지를 임베드로 교체
             await interaction.edit_original_response(content=None, embed=embed)
@@ -198,33 +213,39 @@ class PlayerButton(discord.ui.Button):
             await interaction.edit_original_response(content="정보를 처리하는 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")
 
 class PlayerView(discord.ui.View):
-    def __init__(self, player_results: list[dict], page: int = 0, per_page: int = 5):
+    def __init__(self, player_results: list[dict], page: int = 0, per_page: int = 5, game_type: str = "valorant"):
         super().__init__(timeout=300)
         self.player_results = player_results
         self.page = page
         self.per_page = per_page
+        self.game_type = game_type
 
         start = page * per_page
         end = start + per_page
         current_page_players = player_results[start:end]
         total_pages = (len(player_results) + per_page - 1) // per_page
 
- 
         for idx, player in enumerate(current_page_players, start=start + 1):
-            real_name = player.get('real_name')
-            label = f"{idx}. {player['player_name']}"
-            if real_name:
-                korean_name = extract_korean(real_name)
-                if korean_name:
-                    label = f"{idx}. {player['player_name']} ({korean_name})"
-                else:
-                    label = f"{idx}. {player['player_name']} ({real_name})"
+            if self.game_type == "valorant":
+                real_name = player.get('real_name')
+                label = f"{idx}. {player['player_name']}"
+                if real_name:
+                    korean_name = extract_korean(real_name)
+                    if korean_name:
+                        label = f"{idx}. {player['player_name']} ({korean_name})"
+                    else:
+                        label = f"{idx}. {player['player_name']} ({real_name})"
+            elif self.game_type == "lol":
+                player_label = player.get('player_label', player.get('search_player_name', ''))
+                label = f"{idx}. {player_label}"
+            
             row_num = (idx - start - 1) // 5
             self.add_item(
                 PlayerButton(
                     player_data=player,
                     label=label,
-                    row=row_num
+                    row=row_num,
+                    game_type=self.game_type
                 )
             )
 
@@ -232,9 +253,9 @@ class PlayerView(discord.ui.View):
         nav_buttons = [None] * 5
 
         if page > 0:
-            nav_buttons[0] = PrevPageButton(page - 1, player_results, per_page, row=nav_row)
+            nav_buttons[0] = PrevPageButton(page - 1, player_results, per_page, self.game_type, row=nav_row)
         if end < len(player_results):
-            nav_buttons[4] = NextPageButton(page + 1, player_results, per_page, row=nav_row)
+            nav_buttons[4] = NextPageButton(page + 1, player_results, per_page, self.game_type, row=nav_row)
 
         nav_buttons[2] = discord.ui.Button(
             label=f"{page+1} / {total_pages}",
@@ -250,57 +271,76 @@ class PlayerView(discord.ui.View):
                 self.add_item(b)
 
 class PrevPageButton(discord.ui.Button):
-    def __init__(self, page, player_results, per_page, row=4):
+    def __init__(self, page, player_results, per_page, game_type, row=4):
         super().__init__(label='⬅️ 이전', style=discord.ButtonStyle.secondary, row=row)
         self.page = page
         self.player_results = player_results
         self.per_page = per_page
+        self.game_type = game_type
 
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.edit_message(
-            view=PlayerView(self.player_results, self.page, self.per_page)
+            view=PlayerView(self.player_results, self.page, self.per_page, self.game_type)
         )
 
 class NextPageButton(discord.ui.Button):
-    def __init__(self, page, player_results, per_page, row=4):
+    def __init__(self, page, player_results, per_page, game_type, row=4):
         super().__init__(label='다음 ➡️', style=discord.ButtonStyle.secondary, row=row)
         self.page = page
         self.player_results = player_results
         self.per_page = per_page
+        self.game_type = game_type
 
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.edit_message(
-            view=PlayerView(self.player_results, self.page, self.per_page)
+            view=PlayerView(self.player_results, self.page, self.per_page, self.game_type)
         )
 
 class PlayerCommand(commands.Cog):    
     @commands.command(name='선수', help='선수 정보 확인 (ex) /선수 발로란트 k1ng')
+    @commands.cooldown(1, 8, commands.BucketType.user)
     async def show_player_info(self, ctx: commands.Context, game_name: str, player_name: str):
         if game_name not in GAME_NAME:
             await safe_send(ctx, f"지원하지 않는 게임입니다. 지원 게임: {', '.join(GAME_NAME.keys())}")
             return
         
         game_name = GAME_NAME[game_name]
-        if game_name == "lol":
-            player_results = search_lol_players(player_name)
-            if not player_results:
-                await safe_send(ctx, "❌ 롤 선수 검색 결과가 존재하지 않습니다!")
-                return
-            embed = create_player_embed(player_results, game_name)
-            await safe_send(ctx, embed=embed)
+        player_name = player_name.lower().capitalize()
+        
+        try:
+            if game_name == "lol":
+                # 롤 선수 검색 (동기 함수를 비동기로 래핑)
+                loop = asyncio.get_event_loop()
+                player_results = await loop.run_in_executor(None, search_lol_players, player_name)
 
-        elif game_name == "valorant":
-            player_results = search_valorant_players(player_name)
-            if not player_results:
-                await safe_send(ctx, "❌ 발로란트 선수 검색 결과가 존재하지 않습니다!")
-                return
-            
-            embed = discord.Embed(
-                title=f"🔍 '{player_name}' 닉네임 검색 결과",
-                description="동명이인 또는 유사 닉네임이 여러 명 검색되었습니다. 아래에서 확인하세요."
-            )
+                if not player_results:
+                    await safe_send(ctx, "❌ 롤 선수 검색 결과가 존재하지 않습니다!")
+                    return
 
-            await safe_send(ctx, embed=embed, view=PlayerView(player_results))
+                embed = discord.Embed(
+                    title=f"🔍 '{player_name}' 닉네임 검색 결과",
+                    description=f"동명이인 또는 유사 닉네임이 {len(player_results)} 명 검색되었습니다. 아래에서 확인하세요."
+                )
+                
+                await safe_send(ctx, embed=embed, view=PlayerView(player_results, game_type="lol"))
+                
+            elif game_name == "valorant":
+                player_results = search_valorant_players(player_name)
+                
+                if not player_results:
+                    await safe_send(ctx, "❌ 발로란트 선수 검색 결과가 존재하지 않습니다!")
+                    return
+                
+                embed = discord.Embed(
+                    title=f"🔍 '{player_name}' 닉네임 검색 결과",
+                    description="동명이인 또는 유사 닉네임이 여러 명 검색되었습니다. 아래에서 확인하세요."
+                )
+
+                await safe_send(ctx, embed=embed, view=PlayerView(player_results, game_type="valorant"))
+                
+        except Exception as e:
+            print(f"선수 검색 중 오류 발생: {e}")
+            await safe_send(ctx, "❌ 선수 검색 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")
 
 
 async def setup(bot: commands.Bot):
