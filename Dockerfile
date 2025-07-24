@@ -5,7 +5,7 @@ FROM python:3.11-slim
 RUN useradd --create-home --shell /bin/bash botuser
 
 # 3. 작업 디렉터리 설정
-WORKDIR /bot/src
+WORKDIR /bot
 
 # 4. 시스템 패키지 (최소)
 #    - libjpeg / zlib: Pillow(이미지 처리) 컴파일 런타임
@@ -18,13 +18,16 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # 5. requirements.txt 먼저 복사 (캐시 레이어 활용)
-COPY requirements.txt ../requirements.txt
+COPY requirements.txt ./
 
 # 6. Python 의존성 설치 (캐시 비움)
-RUN pip install --no-cache-dir -r ../requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # 7. 소스 코드 전체 복사
-COPY src/ ./
+COPY src/ ./src
+# bot 진입점 및 데이터 파일 복사
+COPY bot.py ./
+COPY news_state.json ./
 
 # 8. 비루트 유저로 권한 전환
 USER botuser
