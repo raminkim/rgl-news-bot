@@ -24,7 +24,7 @@ COPY requirements.txt ../requirements.txt
 RUN pip install --no-cache-dir -r ../requirements.txt
 
 # 7. 소스 코드 전체 복사
-COPY ./src .
+COPY src/ ./
 
 # 8. 비루트 유저로 권한 전환
 USER botuser
