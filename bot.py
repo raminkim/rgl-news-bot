@@ -8,7 +8,7 @@ import random
 from discord.ext import commands
 from dotenv import load_dotenv
 
-from server.keep_alive import keep_alive
+from src.server.keep_alive import keep_alive
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -206,11 +206,11 @@ async def on_command_error(ctx, error):
 async def load_cogs():
     """모든 cog를 로드합니다."""
     cogs_to_load = [
-        'cogs.hello',
-        'cogs.help',  # 안전한 cog들을 먼저 로드
-        'cogs.news',
-        'cogs.player',
-        'cogs.schedule'  # 이미지 처리가 있는 cog를 마지막에
+        'src.cogs.hello',
+        'src.cogs.help',
+        'src.cogs.news',
+        'src.cogs.player',
+        'src.cogs.schedule'
     ]    
     
     successful_cogs = []

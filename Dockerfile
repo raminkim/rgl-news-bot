@@ -18,19 +18,23 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # 5. requirements.txt 먼저 복사 (캐시 레이어 활용)
-COPY requirements.txt .
+COPY requirements.txt ./
 
 # 6. Python 의존성 설치 (캐시 비움)
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 7. 소스 코드 전체 복사
-COPY . .
+COPY src/ ./src
+# bot 진입점 및 데이터 파일 복사
+COPY bot.py ./
+COPY news_state.json ./
 
 # 8. 비루트 유저로 권한 전환
 USER botuser
 
 # 9. 실시간 로그 플러시
 ENV PYTHONUNBUFFERED=1
-
+# Python import 경로에 src 추가
+ENV PYTHONPATH="/bot/src"
 # 10. 엔트리포인트
 CMD ["python", "bot.py"]
