@@ -8,7 +8,7 @@ import random
 from discord.ext import commands
 from dotenv import load_dotenv
 
-from server.keep_alive import keep_alive
+from src.server.keep_alive import keep_alive
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
