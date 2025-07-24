@@ -34,6 +34,7 @@ USER botuser
 
 # 9. 실시간 로그 플러시
 ENV PYTHONUNBUFFERED=1
-
+# Python import 경로에 src 추가
+ENV PYTHONPATH="/bot/src"
 # 10. 엔트리포인트
 CMD ["python", "bot.py"]
